@@ -179,5 +179,9 @@ INSERT IGNORE INTO sys_user_role (user_id, role_id) VALUES (1, 1);
 INSERT IGNORE INTO warehouse (id, name, address, manager_id, status) VALUES
 (1, '主仓库', '默认地址', 1, 1);
 
-INSERT IGNORE INTO category (id, parent_id, name, sort) VALUES
-(1, 0, '电子产品', 1),(2, 0, '服装', 2),(3, 0, '食品', 3);
+INSERT INTO category (parent_id, name, sort)
+SELECT 0, '电子产品', 1 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM category WHERE name='电子产品' AND parent_id=0 AND deleted=0);
+INSERT INTO category (parent_id, name, sort)
+SELECT 0, '服装', 2 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM category WHERE name='服装' AND parent_id=0 AND deleted=0);
+INSERT INTO category (parent_id, name, sort)
+SELECT 0, '食品', 3 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM category WHERE name='食品' AND parent_id=0 AND deleted=0);
