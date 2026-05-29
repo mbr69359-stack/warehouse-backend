@@ -1,0 +1,110 @@
+package com.warehouse.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.warehouse.dto.InOrderDTO;
+import com.warehouse.entity.*;
+import com.warehouse.mapper.*;
+import com.warehouse.service.InOrderService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+@Service
+@RequiredArgsConstructor
+public class InOrderServiceImpl implements InOrderService {
+
+    private final InOrderMapper inOrderMapper;
+    private final InOrderItemMapper inOrderItemMapper;
+    private final InventoryMapper inventoryMapper;
+    private final InventoryLogMapper inventoryLogMapper;
+    private static final AtomicInteger SEQ = new AtomicInteger(0);
+
+    @Override
+    public Page<InOrder> page(int current, int size, String status, Long warehouseId) {
+        LambdaQueryWrapper<InOrder> q = new LambdaQueryWrapper<InOrder>()
+                .eq(status != null, InOrder::getStatus, status)
+                .eq(warehouseId != null, InOrder::getWarehouseId, warehouseId)
+                .orderByDesc(InOrder::getCreateTime);
+        return inOrderMapper.selectPage(new Page<>(current, size), q);
+    }
+
+    @Override
+    @Transactional
+    public Long create(InOrderDTO dto, Long operatorId) {
+        InOrder order = new InOrder();
+        order.setOrderNo(generateNo());
+        order.setWarehouseId(dto.getWarehouseId());
+        order.setSupplierId(dto.getSupplierId());
+        order.setType(dto.getType());
+        order.setStatus("DRAFT");
+        order.setOperatorId(operatorId);
+        order.setRemark(dto.getRemark());
+        inOrderMapper.insert(order);
+        if (dto.getItems() != null) {
+            for (InOrderDTO.Item i : dto.getItems()) {
+                InOrderItem item = new InOrderItem();
+                item.setOrderId(order.getId());
+                item.setProductId(i.getProductId());
+                item.setPlanQty(i.getPlanQty() != null ? i.getPlanQty() : 0);
+                item.setActualQty(i.getActualQty() != null ? i.getActualQty() : 0);
+                item.setPrice(i.getPrice());
+                inOrderItemMapper.insert(item);
+            }
+        }
+        return order.getId();
+    }
+
+    @Override
+    @Transactional
+    public void confirm(Long orderId, Long operatorId) {
+        InOrder order = inOrderMapper.selectById(orderId);
+        if (order == null) throw new RuntimeException("入库单不存在");
+        if (!"DRAFT".equals(order.getStatus())) throw new RuntimeException("该入库单已确认");
+        List<InOrderItem> items = inOrderItemMapper.selectList(
+                new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
+        for (InOrderItem item : items) {
+            int qty = item.getActualQty();
+            if (qty <= 0) continue;
+            Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
+                    .eq(Inventory::getWarehouseId, order.getWarehouseId())
+                    .eq(Inventory::getProductId, item.getProductId()));
+            int beforeQty;
+            if (inv == null) {
+                inv = new Inventory();
+                inv.setWarehouseId(order.getWarehouseId());
+                inv.setProductId(item.getProductId());
+                inv.setQty(qty); inv.setAlertQty(0);
+                inventoryMapper.insert(inv);
+                beforeQty = 0;
+            } else {
+                beforeQty = inv.getQty();
+                inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), qty);
+            }
+            InventoryLog log = new InventoryLog();
+            log.setWarehouseId(order.getWarehouseId());
+            log.setProductId(item.getProductId());
+            log.setChangeQty(qty); log.setBeforeQty(beforeQty); log.setAfterQty(beforeQty + qty);
+            log.setType("IN"); log.setRefOrderId(orderId);
+            inventoryLogMapper.insert(log);
+        }
+        order.setStatus("CONFIRMED");
+        order.setConfirmTime(LocalDateTime.now());
+        inOrderMapper.updateById(order);
+    }
+
+    @Override
+    public List<InOrderItem> getItems(Long orderId) {
+        return inOrderItemMapper.selectList(
+                new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
+    }
+
+    private String generateNo() {
+        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        return String.format("IN%s%06d", date, SEQ.incrementAndGet() % 1000000);
+    }
+}

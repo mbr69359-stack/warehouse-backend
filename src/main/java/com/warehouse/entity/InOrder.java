@@ -1,0 +1,24 @@
+package com.warehouse.entity;
+
+import com.baomidou.mybatisplus.annotation.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@TableName("in_order")
+public class InOrder {
+    @TableId(type = IdType.AUTO)
+    private Long id;
+    private String orderNo;
+    private Long warehouseId;
+    private Long supplierId;
+    private String type;
+    private String status;
+    private Long operatorId;
+    private String remark;
+    @TableLogic
+    private Integer deleted;
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime createTime;
+    private LocalDateTime confirmTime;
+}
