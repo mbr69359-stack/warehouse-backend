@@ -22,7 +22,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
+import java.util.Arrays;
 
 @Configuration
 @EnableWebSecurity
@@ -36,9 +36,9 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("*"));
-        config.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
+        config.setAllowedOriginPatterns(Arrays.asList("*"));
+        config.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","OPTIONS"));
+        config.setAllowedHeaders(Arrays.asList("*"));
         config.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

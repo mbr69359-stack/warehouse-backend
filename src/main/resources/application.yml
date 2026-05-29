@@ -9,6 +9,10 @@ spring:
     url: ${DATABASE_URL:jdbc:mysql://localhost:3306/warehouse_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${DATABASE_USERNAME:root}
     password: ${DATABASE_PASSWORD:mbr060218}
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:sql/init.sql
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
