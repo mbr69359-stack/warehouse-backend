@@ -1,0 +1,1 @@
+web: java -Xmx256m -XX:+UseSerialGC -jar target/warehouse-backend-1.0.0.jar
