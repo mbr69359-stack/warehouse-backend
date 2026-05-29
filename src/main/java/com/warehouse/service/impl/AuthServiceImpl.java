@@ -1,8 +1,8 @@
 package com.warehouse.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.warehouse.common.JwtUtil;
 import com.warehouse.common.ResultCode;
+import com.warehouse.config.TokenStore;
 import com.warehouse.dto.LoginRequest;
 import com.warehouse.dto.LoginResponse;
 import com.warehouse.entity.SysUser;
@@ -20,6 +20,7 @@ public class AuthServiceImpl implements AuthService {
     private final SysUserMapper sysUserMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final TokenStore tokenStore;
 
     @Override
     public LoginResponse login(LoginRequest request) {
@@ -28,8 +29,10 @@ public class AuthServiceImpl implements AuthService {
             throw new RuntimeException(ResultCode.UNAUTHORIZED.getMessage());
         }
         List<String> roles = sysUserMapper.selectRoleCodesByUserId(user.getId());
+        String token = jwtUtil.generateToken(user.getUsername());
+        tokenStore.save(user.getUsername(), token);
         LoginResponse resp = new LoginResponse();
-        resp.setToken(jwtUtil.generateToken(user.getUsername()));
+        resp.setToken(token);
         resp.setUsername(user.getUsername());
         resp.setRealName(user.getRealName());
         resp.setRoles(roles);
