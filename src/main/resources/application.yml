@@ -5,10 +5,10 @@ server:
 
 spring:
   datasource:
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    url: ${DATABASE_URL:jdbc:mysql://localhost:3306/warehouse_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${DATABASE_USERNAME:root}
-    password: ${DATABASE_PASSWORD:mbr060218}
+    driver-class-name: org.postgresql.Driver
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/warehouse_db}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:}
   sql:
     init:
       mode: always

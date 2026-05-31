@@ -12,7 +12,7 @@ import java.util.Map;
 public interface InOrderMapper extends BaseMapper<InOrder> {
 
     @Select("SELECT DATE(o.create_time) AS date, COUNT(*) AS count, " +
-            "IFNULL(SUM(i.actual_qty * i.price), 0) AS amount " +
+            "COALESCE(SUM(i.actual_qty * i.price), 0) AS amount " +
             "FROM in_order o LEFT JOIN in_order_item i ON o.id = i.order_id " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 " +
             "AND o.create_time BETWEEN #{startDate} AND #{endDate} " +
