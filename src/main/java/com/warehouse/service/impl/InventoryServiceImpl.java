@@ -8,6 +8,8 @@ import com.warehouse.entity.InventoryLog;
 import com.warehouse.mapper.InventoryLogMapper;
 import com.warehouse.mapper.InventoryMapper;
 import com.warehouse.service.InventoryService;
+import com.warehouse.vo.InventoryChartItemVO;
+import com.warehouse.vo.InventoryStatsVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,9 +43,7 @@ public class InventoryServiceImpl implements InventoryService {
         if (dto.getItems() == null) return;
         for (InventoryCheckDTO.CheckItem ci : dto.getItems()) {
             int actualQty = ci.getActualQty() != null ? ci.getActualQty() : 0;
-            Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
-                    .eq(Inventory::getWarehouseId, dto.getWarehouseId())
-                    .eq(Inventory::getProductId, ci.getProductId()));
+            Inventory inv = inventoryMapper.selectForUpdate(dto.getWarehouseId(), ci.getProductId());
             int beforeQty = 0;
             if (inv == null) {
                 inv = new Inventory();
@@ -74,5 +74,34 @@ public class InventoryServiceImpl implements InventoryService {
         if (inv == null) throw new RuntimeException("库存记录不存在，请先入库");
         inv.setAlertQty(alertQty);
         inventoryMapper.updateById(inv);
+    }
+
+    @Override
+    public InventoryStatsVO getStats() {
+        InventoryStatsVO result = new InventoryStatsVO();
+        Long total = inventoryMapper.selectTotalQty();
+        result.setTotalQty(total != null ? total : 0L);
+        InventoryStatsVO maxW = inventoryMapper.selectMaxWarehouse();
+        if (maxW != null) {
+            result.setMaxWarehouseName(maxW.getMaxWarehouseName());
+            result.setMaxWarehouseQty(maxW.getMaxWarehouseQty());
+            result.setMaxWarehouseId(maxW.getMaxWarehouseId());
+        }
+        return result;
+    }
+
+    @Override
+    public List<InventoryChartItemVO> getChartData(String type, Long warehouseId) {
+        List<InventoryChartItemVO> items;
+        if ("warehouse".equals(type) && warehouseId != null) {
+            items = inventoryMapper.selectChartByWarehouse(warehouseId);
+        } else {
+            items = inventoryMapper.selectChartAll();
+        }
+        items.forEach(item -> item.setIsLow(
+            item.getAlertQty() != null && item.getAlertQty() > 0 &&
+            item.getQty() != null && item.getQty() < item.getAlertQty()
+        ));
+        return items;
     }
 }
