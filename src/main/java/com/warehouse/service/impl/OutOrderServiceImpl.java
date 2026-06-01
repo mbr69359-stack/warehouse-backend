@@ -2,6 +2,7 @@ package com.warehouse.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.OutOrderDTO;
 import com.warehouse.entity.*;
 import com.warehouse.mapper.*;
@@ -12,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 @RequiredArgsConstructor
@@ -22,7 +23,6 @@ public class OutOrderServiceImpl implements OutOrderService {
     private final OutOrderItemMapper outOrderItemMapper;
     private final InventoryMapper inventoryMapper;
     private final InventoryLogMapper inventoryLogMapper;
-    private static final AtomicInteger SEQ = new AtomicInteger(0);
 
     @Override
     public Page<OutOrder> page(int current, int size, String status, Long warehouseId) {
@@ -43,6 +43,7 @@ public class OutOrderServiceImpl implements OutOrderService {
         order.setStatus("DRAFT");
         order.setOperatorId(operatorId);
         order.setRemark(dto.getRemark());
+        order.setTargetWarehouseId(dto.getTargetWarehouseId());
         outOrderMapper.insert(order);
         if (dto.getItems() != null) {
             for (OutOrderDTO.Item i : dto.getItems()) {
@@ -59,14 +60,22 @@ public class OutOrderServiceImpl implements OutOrderService {
 
     @Override
     @Transactional
-    public void confirm(Long orderId, Long operatorId) {
+    public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
         OutOrder order = outOrderMapper.selectById(orderId);
         if (order == null) throw new RuntimeException("出库单不存在");
         if (!"DRAFT".equals(order.getStatus())) throw new RuntimeException("该出库单已确认");
         List<OutOrderItem> items = outOrderItemMapper.selectList(
                 new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
+        if (actualItems != null && !actualItems.isEmpty()) {
+            java.util.Map<Long, Integer> qtyMap = new java.util.HashMap<>();
+            for (ConfirmItemDTO c : actualItems) qtyMap.put(c.getItemId(), c.getActualQty());
+            for (OutOrderItem item : items) {
+                Integer qty = qtyMap.get(item.getId());
+                if (qty != null) { item.setActualQty(qty); outOrderItemMapper.updateById(item); }
+            }
+        }
         for (OutOrderItem item : items) {
-            int qty = item.getQty();
+            int qty = item.getActualQty() != null && item.getActualQty() > 0 ? item.getActualQty() : item.getQty();
             if (qty <= 0) continue;
             Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
             if (inv == null || inv.getQty() < qty) {
@@ -93,8 +102,28 @@ public class OutOrderServiceImpl implements OutOrderService {
                 new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
     }
 
+    @Override
+    @Transactional
+    public void delete(Long orderId) {
+        OutOrder order = outOrderMapper.selectById(orderId);
+        if (order == null) throw new RuntimeException("出库单不存在");
+        if ("CONFIRMED".equals(order.getStatus())) {
+            List<OutOrderItem> items = outOrderItemMapper.selectList(
+                    new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
+            for (OutOrderItem item : items) {
+                if (item.getQty() > 0) {
+                    inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), item.getQty());
+                }
+            }
+            inventoryLogMapper.delete(new LambdaQueryWrapper<InventoryLog>().eq(InventoryLog::getRefOrderId, orderId));
+        }
+        outOrderItemMapper.delete(new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
+        outOrderMapper.deleteById(orderId);
+    }
+
     private String generateNo() {
-        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        return String.format("OUT%s%06d", date, SEQ.incrementAndGet() % 1000000);
+        String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+        int rand = ThreadLocalRandom.current().nextInt(100, 1000);
+        return String.format("OUT%s%d", ts, rand);
     }
 }
