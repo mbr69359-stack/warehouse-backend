@@ -20,4 +20,5 @@ public class OutOrder {
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
     private LocalDateTime confirmTime;
+    private Long targetWarehouseId;
 }

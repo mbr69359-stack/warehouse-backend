@@ -12,6 +12,7 @@ public class OutOrderDTO {
     @NotNull(message = "出库类型不能为空")
     private String type;
     private String remark;
+    private Long targetWarehouseId;
     private List<Item> items;
 
     @Data
