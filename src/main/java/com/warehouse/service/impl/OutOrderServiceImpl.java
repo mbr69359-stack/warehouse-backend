@@ -90,6 +90,21 @@ public class OutOrderServiceImpl implements OutOrderService {
             log.setChangeQty(-qty); log.setBeforeQty(beforeQty); log.setAfterQty(beforeQty - qty);
             log.setType("OUT"); log.setRefOrderId(orderId);
             inventoryLogMapper.insert(log);
+            // 调拨出库：同步增加目标仓库库存
+            if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
+                Inventory targetInv = inventoryMapper.selectForUpdate(order.getTargetWarehouseId(), item.getProductId());
+                int targetBefore = targetInv != null ? targetInv.getQty() : 0;
+                inventoryMapper.upsertQty(order.getTargetWarehouseId(), item.getProductId(), qty);
+                InventoryLog transferLog = new InventoryLog();
+                transferLog.setWarehouseId(order.getTargetWarehouseId());
+                transferLog.setProductId(item.getProductId());
+                transferLog.setChangeQty(qty);
+                transferLog.setBeforeQty(targetBefore);
+                transferLog.setAfterQty(targetBefore + qty);
+                transferLog.setType("IN");
+                transferLog.setRefOrderId(orderId);
+                inventoryLogMapper.insert(transferLog);
+            }
         }
         order.setStatus("CONFIRMED");
         order.setConfirmTime(LocalDateTime.now());
@@ -113,6 +128,10 @@ public class OutOrderServiceImpl implements OutOrderService {
             for (OutOrderItem item : items) {
                 if (item.getQty() > 0) {
                     inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), item.getQty());
+                    // 调拨出库：回撤目标仓库库存
+                    if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
+                        inventoryMapper.updateQty(order.getTargetWarehouseId(), item.getProductId(), -item.getQty());
+                    }
                 }
             }
             inventoryLogMapper.delete(new LambdaQueryWrapper<InventoryLog>().eq(InventoryLog::getRefOrderId, orderId));
