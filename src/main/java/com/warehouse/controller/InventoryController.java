@@ -5,6 +5,8 @@ import com.warehouse.common.Result;
 import com.warehouse.dto.InventoryCheckDTO;
 import com.warehouse.entity.Inventory;
 import com.warehouse.service.InventoryService;
+import com.warehouse.vo.InventoryChartItemVO;
+import com.warehouse.vo.InventoryStatsVO;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -40,6 +42,18 @@ public class InventoryController {
     public Result<Void> setAlert(@RequestBody AlertReq req) {
         inventoryService.setAlertQty(req.getWarehouseId(), req.getProductId(), req.getAlertQty());
         return Result.success();
+    }
+
+    @GetMapping("/stats")
+    public Result<InventoryStatsVO> stats() {
+        return Result.success(inventoryService.getStats());
+    }
+
+    @GetMapping("/chart")
+    public Result<List<InventoryChartItemVO>> chart(
+            @RequestParam(defaultValue = "all") String type,
+            @RequestParam(required = false) Long warehouseId) {
+        return Result.success(inventoryService.getChartData(type, warehouseId));
     }
 
     @Data
