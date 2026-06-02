@@ -5,7 +5,7 @@ server:
 
 spring:
   datasource:
-    driver-class-name: org.postgresql.Driver
+    driver-class-name: com.mysql.cj.jdbc.Driver
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
@@ -18,7 +18,7 @@ spring:
       schema-locations: classpath:sql/init.sql
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
-    time-zone: Asia/Shanghai
+    time-zone: Africa/Nairobi
 
 mybatis-plus:
   configuration:

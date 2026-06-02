@@ -3,6 +3,7 @@ package com.warehouse.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.warehouse.common.PageResult;
 import com.warehouse.common.Result;
+import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.OutOrderDTO;
 import com.warehouse.entity.OutOrder;
 import com.warehouse.entity.OutOrderItem;
@@ -39,13 +40,20 @@ public class OutOrderController {
     }
 
     @PostMapping("/{id}/confirm")
-    public Result<Void> confirm(@PathVariable Long id, @AuthenticationPrincipal UserDetails user) {
-        outOrderService.confirm(id, getUid(user)); return Result.success();
+    public Result<Void> confirm(@PathVariable Long id,
+                                @RequestBody(required = false) List<ConfirmItemDTO> items,
+                                @AuthenticationPrincipal UserDetails user) {
+        outOrderService.confirm(id, items, getUid(user)); return Result.success();
     }
 
     @GetMapping("/{id}/items")
     public Result<List<OutOrderItem>> items(@PathVariable Long id) {
         return Result.success(outOrderService.getItems(id));
+    }
+
+    @DeleteMapping("/{id}")
+    public Result<Void> delete(@PathVariable Long id) {
+        outOrderService.delete(id); return Result.success();
     }
 
     private Long getUid(UserDetails user) {

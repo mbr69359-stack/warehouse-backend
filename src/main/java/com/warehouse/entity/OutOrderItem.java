@@ -12,5 +12,6 @@ public class OutOrderItem {
     private Long orderId;
     private Long productId;
     private Integer qty;
+    private Integer actualQty;
     private BigDecimal price;
 }

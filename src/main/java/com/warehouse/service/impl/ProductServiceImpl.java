@@ -3,7 +3,9 @@ package com.warehouse.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.dto.ProductDTO;
+import com.warehouse.entity.Inventory;
 import com.warehouse.entity.Product;
+import com.warehouse.mapper.InventoryMapper;
 import com.warehouse.mapper.ProductMapper;
 import com.warehouse.service.ProductService;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,7 @@ import org.springframework.util.StringUtils;
 public class ProductServiceImpl implements ProductService {
 
     private final ProductMapper productMapper;
+    private final InventoryMapper inventoryMapper;
 
     @Override
     public Page<Product> page(int current, int size, String name, Long categoryId) {
@@ -48,5 +51,11 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public void delete(Long id) { productMapper.deleteById(id); }
+    public void delete(Long id) {
+        Integer stock = inventoryMapper.selectList(new LambdaQueryWrapper<Inventory>()
+                .eq(Inventory::getProductId, id).gt(Inventory::getQty, 0))
+                .stream().mapToInt(Inventory::getQty).sum();
+        if (stock > 0) throw new RuntimeException("该商品仍有库存 " + stock + " 件，无法删除");
+        productMapper.deleteById(id);
+    }
 }

@@ -1,7 +1,10 @@
 package com.warehouse.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.warehouse.dto.WarehouseDTO;
+import com.warehouse.entity.Inventory;
 import com.warehouse.entity.Warehouse;
+import com.warehouse.mapper.InventoryMapper;
 import com.warehouse.mapper.WarehouseMapper;
 import com.warehouse.service.WarehouseService;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +16,7 @@ import java.util.List;
 public class WarehouseServiceImpl implements WarehouseService {
 
     private final WarehouseMapper warehouseMapper;
+    private final InventoryMapper inventoryMapper;
 
     @Override
     public List<Warehouse> listAll() { return warehouseMapper.selectList(null); }
@@ -37,5 +41,10 @@ public class WarehouseServiceImpl implements WarehouseService {
     }
 
     @Override
-    public void delete(Long id) { warehouseMapper.deleteById(id); }
+    public void delete(Long id) {
+        long stockCount = inventoryMapper.selectCount(new LambdaQueryWrapper<Inventory>()
+                .eq(Inventory::getWarehouseId, id).gt(Inventory::getQty, 0));
+        if (stockCount > 0) throw new RuntimeException("该仓库仍有 " + stockCount + " 种商品有库存，无法删除");
+        warehouseMapper.deleteById(id);
+    }
 }

@@ -2,6 +2,7 @@ package com.warehouse.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.InOrderDTO;
 import com.warehouse.entity.*;
 import com.warehouse.mapper.*;
@@ -12,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 @RequiredArgsConstructor
@@ -22,7 +23,6 @@ public class InOrderServiceImpl implements InOrderService {
     private final InOrderItemMapper inOrderItemMapper;
     private final InventoryMapper inventoryMapper;
     private final InventoryLogMapper inventoryLogMapper;
-    private static final AtomicInteger SEQ = new AtomicInteger(0);
 
     @Override
     public Page<InOrder> page(int current, int size, String status, Long warehouseId) {
@@ -61,18 +61,25 @@ public class InOrderServiceImpl implements InOrderService {
 
     @Override
     @Transactional
-    public void confirm(Long orderId, Long operatorId) {
+    public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
         InOrder order = inOrderMapper.selectById(orderId);
         if (order == null) throw new RuntimeException("入库单不存在");
         if (!"DRAFT".equals(order.getStatus())) throw new RuntimeException("该入库单已确认");
         List<InOrderItem> items = inOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
+        // Write actual quantities from the confirm request
+        if (actualItems != null && !actualItems.isEmpty()) {
+            java.util.Map<Long, Integer> qtyMap = new java.util.HashMap<>();
+            for (ConfirmItemDTO c : actualItems) qtyMap.put(c.getItemId(), c.getActualQty());
+            for (InOrderItem item : items) {
+                Integer qty = qtyMap.get(item.getId());
+                if (qty != null) { item.setActualQty(qty); inOrderItemMapper.updateById(item); }
+            }
+        }
         for (InOrderItem item : items) {
             int qty = item.getActualQty();
             if (qty <= 0) continue;
-            Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
-                    .eq(Inventory::getWarehouseId, order.getWarehouseId())
-                    .eq(Inventory::getProductId, item.getProductId()));
+            Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
             int beforeQty;
             if (inv == null) {
                 inv = new Inventory();
@@ -103,8 +110,28 @@ public class InOrderServiceImpl implements InOrderService {
                 new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
     }
 
+    @Override
+    @Transactional
+    public void delete(Long orderId) {
+        InOrder order = inOrderMapper.selectById(orderId);
+        if (order == null) throw new RuntimeException("入库单不存在");
+        if ("CONFIRMED".equals(order.getStatus())) {
+            List<InOrderItem> items = inOrderItemMapper.selectList(
+                    new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
+            for (InOrderItem item : items) {
+                if (item.getActualQty() > 0) {
+                    inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), -item.getActualQty());
+                }
+            }
+            inventoryLogMapper.delete(new LambdaQueryWrapper<InventoryLog>().eq(InventoryLog::getRefOrderId, orderId));
+        }
+        inOrderItemMapper.delete(new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
+        inOrderMapper.deleteById(orderId);
+    }
+
     private String generateNo() {
-        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        return String.format("IN%s%06d", date, SEQ.incrementAndGet() % 1000000);
+        String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+        int rand = ThreadLocalRandom.current().nextInt(100, 1000);
+        return String.format("IN%s%d", ts, rand);
     }
 }
