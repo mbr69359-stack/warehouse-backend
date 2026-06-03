@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS out_order_item (
     order_id   BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
     qty        INT NOT NULL DEFAULT 0,
+    actual_qty INT NOT NULL DEFAULT 0,
     price      DECIMAL(12,2) NOT NULL DEFAULT 0.00
 );
 
