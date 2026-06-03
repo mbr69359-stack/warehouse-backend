@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.warehouse.common.Result;
 import com.warehouse.common.ResultCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
@@ -33,10 +34,13 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
     private final ObjectMapper objectMapper;
 
+    @Value("${cors.allowed-origins}")
+    private String allowedOrigins;
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(Arrays.asList("*"));
+        config.setAllowedOriginPatterns(Arrays.asList(allowedOrigins.split(",")));
         config.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","OPTIONS"));
         config.setAllowedHeaders(Arrays.asList("*"));
         config.setAllowCredentials(true);

@@ -276,3 +276,15 @@ ON DUPLICATE KEY UPDATE qty=VALUES(qty), alert_qty=VALUES(alert_qty);
 -- Schema migrations（幂等，每次启动自动执行）
 -- =============================================
 ALTER TABLE out_order_item ADD COLUMN IF NOT EXISTS actual_qty INT NOT NULL DEFAULT 0;
+
+-- =============================================
+-- 性能索引（幂等，每次启动自动执行）
+-- =============================================
+-- 高频：confirm/delete 按 order_id 查明细行
+CREATE INDEX IF NOT EXISTS idx_in_order_item_order  ON in_order_item(order_id);
+CREATE INDEX IF NOT EXISTS idx_out_order_item_order ON out_order_item(order_id);
+-- 高频：删除已确认订单时反查库存日志
+CREATE INDEX IF NOT EXISTS idx_inv_log_ref_order    ON inventory_log(ref_order_id);
+-- 中频：订单列表按状态+仓库筛选
+CREATE INDEX IF NOT EXISTS idx_in_order_status_wh   ON in_order(status, warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_out_order_status_wh  ON out_order(status, warehouse_id);
