@@ -7,6 +7,7 @@ import com.warehouse.entity.Inventory;
 import com.warehouse.entity.InventoryLog;
 import com.warehouse.mapper.InventoryLogMapper;
 import com.warehouse.mapper.InventoryMapper;
+import com.warehouse.common.BusinessException;
 import com.warehouse.service.InventoryService;
 import com.warehouse.vo.InventoryChartItemVO;
 import com.warehouse.vo.InventoryStatsVO;
@@ -71,7 +72,7 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
                 .eq(Inventory::getWarehouseId, warehouseId)
                 .eq(Inventory::getProductId, productId));
-        if (inv == null) throw new RuntimeException("库存记录不存在，请先入库");
+        if (inv == null) throw new BusinessException("库存记录不存在，请先入库");
         inv.setAlertQty(alertQty);
         inventoryMapper.updateById(inv);
     }

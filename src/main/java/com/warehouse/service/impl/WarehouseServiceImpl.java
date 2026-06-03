@@ -6,6 +6,7 @@ import com.warehouse.entity.Inventory;
 import com.warehouse.entity.Warehouse;
 import com.warehouse.mapper.InventoryMapper;
 import com.warehouse.mapper.WarehouseMapper;
+import com.warehouse.common.BusinessException;
 import com.warehouse.service.WarehouseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,7 +34,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     @Override
     public void update(WarehouseDTO dto) {
         Warehouse w = warehouseMapper.selectById(dto.getId());
-        if (w == null) throw new RuntimeException("仓库不存在");
+        if (w == null) throw new BusinessException("仓库不存在");
         w.setName(dto.getName()); w.setAddress(dto.getAddress());
         w.setManagerId(dto.getManagerId()); w.setRemark(dto.getRemark());
         if (dto.getStatus() != null) w.setStatus(dto.getStatus());
@@ -44,7 +45,7 @@ public class WarehouseServiceImpl implements WarehouseService {
     public void delete(Long id) {
         long stockCount = inventoryMapper.selectCount(new LambdaQueryWrapper<Inventory>()
                 .eq(Inventory::getWarehouseId, id).gt(Inventory::getQty, 0));
-        if (stockCount > 0) throw new RuntimeException("该仓库仍有 " + stockCount + " 种商品有库存，无法删除");
+        if (stockCount > 0) throw new BusinessException("该仓库仍有 " + stockCount + " 种商品有库存，无法删除");
         warehouseMapper.deleteById(id);
     }
 }

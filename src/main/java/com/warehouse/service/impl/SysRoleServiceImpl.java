@@ -3,6 +3,7 @@ package com.warehouse.service.impl;
 import com.warehouse.dto.SysRoleDTO;
 import com.warehouse.entity.SysRole;
 import com.warehouse.mapper.SysRoleMapper;
+import com.warehouse.common.BusinessException;
 import com.warehouse.service.SysRoleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,7 +32,7 @@ public class SysRoleServiceImpl implements SysRoleService {
     @Override
     public void update(SysRoleDTO dto) {
         SysRole role = sysRoleMapper.selectById(dto.getId());
-        if (role == null) throw new RuntimeException("角色不存在");
+        if (role == null) throw new BusinessException("角色不存在");
         role.setRoleName(dto.getRoleName());
         role.setRemark(dto.getRemark());
         sysRoleMapper.updateById(role);

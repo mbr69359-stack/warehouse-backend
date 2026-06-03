@@ -7,6 +7,7 @@ import com.warehouse.entity.Inventory;
 import com.warehouse.entity.Product;
 import com.warehouse.mapper.InventoryMapper;
 import com.warehouse.mapper.ProductMapper;
+import com.warehouse.common.BusinessException;
 import com.warehouse.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -42,7 +43,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public void update(ProductDTO dto) {
         Product p = productMapper.selectById(dto.getId());
-        if (p == null) throw new RuntimeException("商品不存在");
+        if (p == null) throw new BusinessException("商品不存在");
         p.setName(dto.getName()); p.setCategoryId(dto.getCategoryId());
         p.setUnit(dto.getUnit()); p.setPrice(dto.getPrice());
         p.setImage(dto.getImage()); p.setRemark(dto.getRemark());
@@ -55,7 +56,7 @@ public class ProductServiceImpl implements ProductService {
         Integer stock = inventoryMapper.selectList(new LambdaQueryWrapper<Inventory>()
                 .eq(Inventory::getProductId, id).gt(Inventory::getQty, 0))
                 .stream().mapToInt(Inventory::getQty).sum();
-        if (stock > 0) throw new RuntimeException("该商品仍有库存 " + stock + " 件，无法删除");
+        if (stock > 0) throw new BusinessException("该商品仍有库存 " + stock + " 件，无法删除");
         productMapper.deleteById(id);
     }
 }

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.dto.SupplierDTO;
 import com.warehouse.entity.Supplier;
 import com.warehouse.mapper.SupplierMapper;
+import com.warehouse.common.BusinessException;
 import com.warehouse.service.SupplierService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -37,7 +38,7 @@ public class SupplierServiceImpl implements SupplierService {
     @Override
     public void update(SupplierDTO dto) {
         Supplier s = supplierMapper.selectById(dto.getId());
-        if (s == null) throw new RuntimeException("供应商不存在");
+        if (s == null) throw new BusinessException("供应商不存在");
         s.setName(dto.getName()); s.setContact(dto.getContact());
         s.setPhone(dto.getPhone()); s.setEmail(dto.getEmail());
         s.setAddress(dto.getAddress());

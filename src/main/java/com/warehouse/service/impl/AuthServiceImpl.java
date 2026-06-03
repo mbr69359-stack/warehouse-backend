@@ -1,5 +1,6 @@
 package com.warehouse.service.impl;
 
+import com.warehouse.common.BusinessException;
 import com.warehouse.common.JwtUtil;
 import com.warehouse.common.ResultCode;
 import com.warehouse.config.TokenStore;
@@ -26,7 +27,7 @@ public class AuthServiceImpl implements AuthService {
     public LoginResponse login(LoginRequest request) {
         SysUser user = sysUserMapper.selectByUsernameWithPwd(request.getUsername());
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException(ResultCode.UNAUTHORIZED.getMessage());
+            throw new BusinessException(ResultCode.UNAUTHORIZED);
         }
         List<String> roles = sysUserMapper.selectRoleCodesByUserId(user.getId());
         String token = jwtUtil.generateToken(user.getUsername());

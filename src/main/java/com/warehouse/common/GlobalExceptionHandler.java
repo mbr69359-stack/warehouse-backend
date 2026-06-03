@@ -2,6 +2,7 @@ package com.warehouse.common;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -37,9 +38,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BusinessException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result<Void> handleBusiness(BusinessException ex) {
-        return Result.fail(ex.getCode(), ex.getMessage());
+    public ResponseEntity<Result<Void>> handleBusiness(BusinessException ex) {
+        return ResponseEntity.status(ex.getCode()).body(Result.fail(ex.getCode(), ex.getMessage()));
     }
 
     @ExceptionHandler(RuntimeException.class)

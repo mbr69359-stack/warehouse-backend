@@ -7,6 +7,7 @@ import com.warehouse.entity.SysUser;
 import com.warehouse.entity.SysUserRole;
 import com.warehouse.mapper.SysUserMapper;
 import com.warehouse.mapper.SysUserRoleMapper;
+import com.warehouse.common.BusinessException;
 import com.warehouse.service.SysUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -48,7 +49,7 @@ public class SysUserServiceImpl implements SysUserService {
     @Transactional
     public void update(SysUserDTO dto) {
         SysUser user = sysUserMapper.selectById(dto.getId());
-        if (user == null) throw new RuntimeException("用户不存在");
+        if (user == null) throw new BusinessException("用户不存在");
         user.setRealName(dto.getRealName());
         user.setPhone(dto.getPhone());
         user.setEmail(dto.getEmail());
