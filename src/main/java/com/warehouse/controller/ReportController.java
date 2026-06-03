@@ -3,6 +3,7 @@ package com.warehouse.controller;
 import com.warehouse.common.Result;
 import com.warehouse.service.ReportService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +11,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/reports")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class ReportController {
     private final ReportService reportService;
 

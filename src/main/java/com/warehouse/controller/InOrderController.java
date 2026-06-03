@@ -35,12 +35,14 @@ public class InOrderController {
     }
 
     @PostMapping
+    @PreAuthorize("isAuthenticated()")
     public Result<Long> create(@RequestBody @Validated InOrderDTO dto,
                                @AuthenticationPrincipal UserDetails user) {
         return Result.success(inOrderService.create(dto, getUid(user)));
     }
 
     @PostMapping("/{id}/confirm")
+    @PreAuthorize("isAuthenticated()")
     public Result<Void> confirm(@PathVariable Long id,
                                 @RequestBody(required = false) List<ConfirmItemDTO> items,
                                 @AuthenticationPrincipal UserDetails user) {

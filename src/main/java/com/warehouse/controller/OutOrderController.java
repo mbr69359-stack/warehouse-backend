@@ -35,12 +35,14 @@ public class OutOrderController {
     }
 
     @PostMapping
+    @PreAuthorize("isAuthenticated()")
     public Result<Long> create(@RequestBody @Validated OutOrderDTO dto,
                                @AuthenticationPrincipal UserDetails user) {
         return Result.success(outOrderService.create(dto, getUid(user)));
     }
 
     @PostMapping("/{id}/confirm")
+    @PreAuthorize("isAuthenticated()")
     public Result<Void> confirm(@PathVariable Long id,
                                 @RequestBody(required = false) List<ConfirmItemDTO> items,
                                 @AuthenticationPrincipal UserDetails user) {
