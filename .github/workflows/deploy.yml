@@ -1,0 +1,39 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build jar
+        run: mvn clean package -DskipTests
+
+      - name: Rename jar
+        run: cp target/warehouse-backend-1.0.0.jar target/warehouse-backend.jar
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: deploy-${{ github.run_number }}
+          name: "Deploy #${{ github.run_number }}"
+          body: |
+            Commit: ${{ github.sha }}
+            Message: ${{ github.event.head_commit.message }}
+          files: target/warehouse-backend.jar
+          make_latest: true
