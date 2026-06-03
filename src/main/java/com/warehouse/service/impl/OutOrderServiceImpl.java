@@ -76,7 +76,7 @@ public class OutOrderServiceImpl implements OutOrderService {
             }
         }
         for (OutOrderItem item : items) {
-            int qty = item.getActualQty() != null && item.getActualQty() > 0 ? item.getActualQty() : item.getQty();
+            int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
             Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
             if (inv == null || inv.getQty() < qty) {
