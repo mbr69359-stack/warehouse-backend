@@ -271,3 +271,8 @@ INSERT INTO inventory (warehouse_id, product_id, qty, alert_qty) VALUES
 (1, 19, 120,  20),
 (1, 20,  69,  70)
 ON DUPLICATE KEY UPDATE qty=VALUES(qty), alert_qty=VALUES(alert_qty);
+
+-- =============================================
+-- Schema migrations（幂等，每次启动自动执行）
+-- =============================================
+ALTER TABLE out_order_item ADD COLUMN IF NOT EXISTS actual_qty INT NOT NULL DEFAULT 0;
