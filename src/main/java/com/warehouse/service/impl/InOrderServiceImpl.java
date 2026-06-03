@@ -122,10 +122,20 @@ public class InOrderServiceImpl implements InOrderService {
             for (InOrderItem item : items) {
                 int actualQty = item.getActualQty() != null ? item.getActualQty() : 0;
                 if (actualQty > 0) {
+                    Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
+                    int beforeQty = inv != null ? inv.getQty() : 0;
                     inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), -actualQty);
+                    InventoryLog cancelLog = new InventoryLog();
+                    cancelLog.setWarehouseId(order.getWarehouseId());
+                    cancelLog.setProductId(item.getProductId());
+                    cancelLog.setChangeQty(-actualQty);
+                    cancelLog.setBeforeQty(beforeQty);
+                    cancelLog.setAfterQty(beforeQty - actualQty);
+                    cancelLog.setType("IN_CANCEL");
+                    cancelLog.setRefOrderId(orderId);
+                    inventoryLogMapper.insert(cancelLog);
                 }
             }
-            inventoryLogMapper.delete(new LambdaQueryWrapper<InventoryLog>().eq(InventoryLog::getRefOrderId, orderId));
         }
         inOrderItemMapper.delete(new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
         inOrderMapper.deleteById(orderId);

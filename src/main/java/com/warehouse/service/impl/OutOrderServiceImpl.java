@@ -129,13 +129,34 @@ public class OutOrderServiceImpl implements OutOrderService {
             for (OutOrderItem item : items) {
                 int restoreQty = (item.getActualQty() != null) ? item.getActualQty() : 0;
                 if (restoreQty > 0) {
+                    Inventory srcInv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
+                    int srcBefore = srcInv != null ? srcInv.getQty() : 0;
                     inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), restoreQty);
+                    InventoryLog cancelLog = new InventoryLog();
+                    cancelLog.setWarehouseId(order.getWarehouseId());
+                    cancelLog.setProductId(item.getProductId());
+                    cancelLog.setChangeQty(restoreQty);
+                    cancelLog.setBeforeQty(srcBefore);
+                    cancelLog.setAfterQty(srcBefore + restoreQty);
+                    cancelLog.setType("OUT_CANCEL");
+                    cancelLog.setRefOrderId(orderId);
+                    inventoryLogMapper.insert(cancelLog);
                     if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
+                        Inventory tgtInv = inventoryMapper.selectForUpdate(order.getTargetWarehouseId(), item.getProductId());
+                        int tgtBefore = tgtInv != null ? tgtInv.getQty() : 0;
                         inventoryMapper.updateQty(order.getTargetWarehouseId(), item.getProductId(), -restoreQty);
+                        InventoryLog transferCancelLog = new InventoryLog();
+                        transferCancelLog.setWarehouseId(order.getTargetWarehouseId());
+                        transferCancelLog.setProductId(item.getProductId());
+                        transferCancelLog.setChangeQty(-restoreQty);
+                        transferCancelLog.setBeforeQty(tgtBefore);
+                        transferCancelLog.setAfterQty(tgtBefore - restoreQty);
+                        transferCancelLog.setType("TRANSFER_CANCEL");
+                        transferCancelLog.setRefOrderId(orderId);
+                        inventoryLogMapper.insert(transferCancelLog);
                     }
                 }
             }
-            inventoryLogMapper.delete(new LambdaQueryWrapper<InventoryLog>().eq(InventoryLog::getRefOrderId, orderId));
         }
         outOrderItemMapper.delete(new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
         outOrderMapper.deleteById(orderId);
