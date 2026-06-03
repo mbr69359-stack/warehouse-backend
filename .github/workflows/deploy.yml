@@ -37,3 +37,20 @@ jobs:
             Message: ${{ github.event.head_commit.message }}
           files: target/warehouse-backend.jar
           make_latest: true
+
+      - name: Inject JWT_SECRET on VPS
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          echo "$VPS_SSH_KEY" > /tmp/vps_key
+          chmod 600 /tmp/vps_key
+          ssh -i /tmp/vps_key -o StrictHostKeyChecking=no root@139.84.247.83 \
+            "SERVICE=/etc/systemd/system/warehouse.service
+             if grep -q JWT_SECRET \$SERVICE; then
+               sed -i \"s|Environment=\\\"JWT_SECRET=.*\\\"|Environment=\\\"JWT_SECRET=$JWT_SECRET\\\"|\" \$SERVICE
+             else
+               sed -i \"/\\[Service\\]/a Environment=\\\"JWT_SECRET=$JWT_SECRET\\\"\" \$SERVICE
+             fi
+             systemctl daemon-reload"
+          rm -f /tmp/vps_key

@@ -31,7 +31,7 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 jwt:
-  secret: warehouse-secret-key-2026-must-be-at-least-256-bits-long
+  secret: ${JWT_SECRET}
   expiration: 86400000
 
 springdoc:
