@@ -36,6 +36,12 @@ public class GlobalExceptionHandler {
         return Result.fail(ResultCode.FORBIDDEN);
     }
 
+    @ExceptionHandler(BusinessException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleBusiness(BusinessException ex) {
+        return Result.fail(ex.getCode(), ex.getMessage());
+    }
+
     @ExceptionHandler(RuntimeException.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<Void> handleRuntime(RuntimeException ex) {

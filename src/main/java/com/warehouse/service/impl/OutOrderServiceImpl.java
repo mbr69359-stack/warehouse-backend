@@ -6,6 +6,7 @@ import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.OutOrderDTO;
 import com.warehouse.entity.*;
 import com.warehouse.mapper.*;
+import com.warehouse.common.BusinessException;
 import com.warehouse.service.OutOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -62,8 +63,8 @@ public class OutOrderServiceImpl implements OutOrderService {
     @Transactional
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
         OutOrder order = outOrderMapper.selectById(orderId);
-        if (order == null) throw new RuntimeException("出库单不存在");
-        if (!"DRAFT".equals(order.getStatus())) throw new RuntimeException("该出库单已确认");
+        if (order == null) throw new BusinessException("出库单不存在");
+        if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("该出库单已确认");
         List<OutOrderItem> items = outOrderItemMapper.selectList(
                 new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
         if (actualItems != null && !actualItems.isEmpty()) {
@@ -79,7 +80,7 @@ public class OutOrderServiceImpl implements OutOrderService {
             if (qty <= 0) continue;
             Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
             if (inv == null || inv.getQty() < qty) {
-                throw new RuntimeException("商品ID " + item.getProductId() + " 库存不足，当前：" +
+                throw new BusinessException("商品ID " + item.getProductId() + " 库存不足，当前：" +
                         (inv == null ? 0 : inv.getQty()) + "，需要：" + qty);
             }
             int beforeQty = inv.getQty();
@@ -121,16 +122,16 @@ public class OutOrderServiceImpl implements OutOrderService {
     @Transactional
     public void delete(Long orderId) {
         OutOrder order = outOrderMapper.selectById(orderId);
-        if (order == null) throw new RuntimeException("出库单不存在");
+        if (order == null) throw new BusinessException("出库单不存在");
         if ("CONFIRMED".equals(order.getStatus())) {
             List<OutOrderItem> items = outOrderItemMapper.selectList(
                     new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
             for (OutOrderItem item : items) {
-                if (item.getQty() > 0) {
-                    inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), item.getQty());
-                    // 调拨出库：回撤目标仓库库存
+                int restoreQty = (item.getActualQty() != null) ? item.getActualQty() : 0;
+                if (restoreQty > 0) {
+                    inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), restoreQty);
                     if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
-                        inventoryMapper.updateQty(order.getTargetWarehouseId(), item.getProductId(), -item.getQty());
+                        inventoryMapper.updateQty(order.getTargetWarehouseId(), item.getProductId(), -restoreQty);
                     }
                 }
             }

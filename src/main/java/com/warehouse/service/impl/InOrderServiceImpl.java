@@ -6,6 +6,7 @@ import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.InOrderDTO;
 import com.warehouse.entity.*;
 import com.warehouse.mapper.*;
+import com.warehouse.common.BusinessException;
 import com.warehouse.service.InOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -63,8 +64,8 @@ public class InOrderServiceImpl implements InOrderService {
     @Transactional
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
         InOrder order = inOrderMapper.selectById(orderId);
-        if (order == null) throw new RuntimeException("入库单不存在");
-        if (!"DRAFT".equals(order.getStatus())) throw new RuntimeException("该入库单已确认");
+        if (order == null) throw new BusinessException("入库单不存在");
+        if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("该入库单已确认");
         List<InOrderItem> items = inOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
         // Write actual quantities from the confirm request
@@ -77,7 +78,7 @@ public class InOrderServiceImpl implements InOrderService {
             }
         }
         for (InOrderItem item : items) {
-            int qty = item.getActualQty();
+            int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
             Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
             int beforeQty;
@@ -114,13 +115,14 @@ public class InOrderServiceImpl implements InOrderService {
     @Transactional
     public void delete(Long orderId) {
         InOrder order = inOrderMapper.selectById(orderId);
-        if (order == null) throw new RuntimeException("入库单不存在");
+        if (order == null) throw new BusinessException("入库单不存在");
         if ("CONFIRMED".equals(order.getStatus())) {
             List<InOrderItem> items = inOrderItemMapper.selectList(
                     new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
             for (InOrderItem item : items) {
-                if (item.getActualQty() > 0) {
-                    inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), -item.getActualQty());
+                int actualQty = item.getActualQty() != null ? item.getActualQty() : 0;
+                if (actualQty > 0) {
+                    inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), -actualQty);
                 }
             }
             inventoryLogMapper.delete(new LambdaQueryWrapper<InventoryLog>().eq(InventoryLog::getRefOrderId, orderId));
