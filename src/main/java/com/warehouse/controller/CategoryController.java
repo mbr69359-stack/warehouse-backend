@@ -5,6 +5,7 @@ import com.warehouse.entity.Category;
 import com.warehouse.service.CategoryService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -18,12 +19,14 @@ public class CategoryController {
     public Result<List<Category>> list() { return Result.success(categoryService.listAll()); }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> create(@RequestBody CategoryReq req) {
         categoryService.create(req.getName(), req.getParentId(), req.getSort());
         return Result.success();
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> delete(@PathVariable Long id) {
         categoryService.delete(id); return Result.success();
     }

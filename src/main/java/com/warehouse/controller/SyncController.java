@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import javax.validation.Valid;
 import java.util.List;
 
@@ -15,6 +16,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/sync")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class SyncController {
     private final SyncService syncService;
 

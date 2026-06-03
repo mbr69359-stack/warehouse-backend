@@ -5,6 +5,7 @@ import com.warehouse.dto.SysRoleDTO;
 import com.warehouse.entity.SysRole;
 import com.warehouse.service.SysRoleService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/sys/roles")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class SysRoleController {
 
     private final SysRoleService sysRoleService;

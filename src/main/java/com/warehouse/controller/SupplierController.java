@@ -6,6 +6,7 @@ import com.warehouse.dto.SupplierDTO;
 import com.warehouse.entity.Supplier;
 import com.warehouse.service.SupplierService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,16 +25,19 @@ public class SupplierController {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> create(@RequestBody @Validated SupplierDTO dto) {
         supplierService.create(dto); return Result.success();
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> update(@PathVariable Long id, @RequestBody SupplierDTO dto) {
         dto.setId(id); supplierService.update(dto); return Result.success();
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> delete(@PathVariable Long id) {
         supplierService.delete(id); return Result.success();
     }

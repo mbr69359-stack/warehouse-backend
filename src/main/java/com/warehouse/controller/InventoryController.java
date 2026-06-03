@@ -9,6 +9,7 @@ import com.warehouse.vo.InventoryChartItemVO;
 import com.warehouse.vo.InventoryStatsVO;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -34,11 +35,13 @@ public class InventoryController {
     }
 
     @PostMapping("/check")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> check(@RequestBody @Validated InventoryCheckDTO dto) {
         inventoryService.check(dto); return Result.success();
     }
 
     @PutMapping("/alert")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> setAlert(@RequestBody AlertReq req) {
         inventoryService.setAlertQty(req.getWarehouseId(), req.getProductId(), req.getAlertQty());
         return Result.success();

@@ -11,6 +11,7 @@ import com.warehouse.entity.SysUser;
 import com.warehouse.mapper.SysUserMapper;
 import com.warehouse.service.InOrderService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.validation.annotation.Validated;
@@ -52,6 +53,7 @@ public class InOrderController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> delete(@PathVariable Long id) {
         inOrderService.delete(id); return Result.success();
     }

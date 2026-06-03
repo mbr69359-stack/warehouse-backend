@@ -6,6 +6,7 @@ import com.warehouse.dto.ProductDTO;
 import com.warehouse.entity.Product;
 import com.warehouse.service.ProductService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,16 +26,19 @@ public class ProductController {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> create(@RequestBody @Validated ProductDTO dto) {
         productService.create(dto); return Result.success();
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> update(@PathVariable Long id, @RequestBody ProductDTO dto) {
         dto.setId(id); productService.update(dto); return Result.success();
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> delete(@PathVariable Long id) {
         productService.delete(id); return Result.success();
     }

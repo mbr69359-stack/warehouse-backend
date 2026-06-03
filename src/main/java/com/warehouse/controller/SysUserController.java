@@ -6,12 +6,14 @@ import com.warehouse.dto.SysUserDTO;
 import com.warehouse.entity.SysUser;
 import com.warehouse.service.SysUserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/sys/users")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class SysUserController {
 
     private final SysUserService sysUserService;
