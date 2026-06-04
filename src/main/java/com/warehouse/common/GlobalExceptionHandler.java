@@ -46,7 +46,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<Void> handleRuntime(RuntimeException ex) {
         log.error("RuntimeException: {}", ex.getMessage(), ex);
-        return Result.fail(ex.getMessage());
+        return Result.fail(ResultCode.INTERNAL_ERROR);
     }
 
     @ExceptionHandler(Exception.class)

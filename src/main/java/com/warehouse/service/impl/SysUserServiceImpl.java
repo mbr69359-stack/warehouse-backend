@@ -34,6 +34,9 @@ public class SysUserServiceImpl implements SysUserService {
     @Override
     @Transactional
     public void create(SysUserDTO dto) {
+        Long count = sysUserMapper.selectCount(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getUsername, dto.getUsername()));
+        if (count > 0) throw new BusinessException("用户名已存在");
         SysUser user = new SysUser();
         user.setUsername(dto.getUsername());
         user.setPassword(passwordEncoder.encode(dto.getPassword()));
