@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -25,8 +26,10 @@ public class InventoryController {
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) Long warehouseId,
-            @RequestParam(required = false) Long productId) {
-        return Result.success(PageResult.of(inventoryService.page(current, size, warehouseId, productId)));
+            @RequestParam(required = false) Long productId,
+            @RequestParam(required = false) String updatedAfter) {
+        LocalDateTime after = updatedAfter != null ? LocalDateTime.parse(updatedAfter) : null;
+        return Result.success(PageResult.of(inventoryService.page(current, size, warehouseId, productId, after)));
     }
 
     @GetMapping("/alerts")

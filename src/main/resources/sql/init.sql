@@ -289,3 +289,5 @@ CREATE INDEX IF NOT EXISTS idx_inv_log_ref_order    ON inventory_log(ref_order_i
 -- 中频：订单列表按状态+仓库筛选
 CREATE INDEX IF NOT EXISTS idx_in_order_status_wh   ON in_order(status, warehouse_id);
 CREATE INDEX IF NOT EXISTS idx_out_order_status_wh  ON out_order(status, warehouse_id);
+-- 高频：日志按仓库+商品+时间范围查询（日志量大后覆盖核心查询场景）
+CREATE INDEX IF NOT EXISTS idx_inv_log_wh_prod_time ON inventory_log(warehouse_id, product_id, create_time);

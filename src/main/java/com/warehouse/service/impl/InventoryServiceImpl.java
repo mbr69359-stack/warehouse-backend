@@ -14,20 +14,25 @@ import com.warehouse.vo.InventoryStatsVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
 public class InventoryServiceImpl implements InventoryService {
 
+    private static final ConcurrentHashMap<Long, Boolean> CHECKING = new ConcurrentHashMap<>();
+
     private final InventoryMapper inventoryMapper;
     private final InventoryLogMapper inventoryLogMapper;
 
     @Override
-    public Page<Inventory> page(int current, int size, Long warehouseId, Long productId) {
+    public Page<Inventory> page(int current, int size, Long warehouseId, Long productId, LocalDateTime updatedAfter) {
         LambdaQueryWrapper<Inventory> q = new LambdaQueryWrapper<Inventory>()
                 .eq(warehouseId != null, Inventory::getWarehouseId, warehouseId)
-                .eq(productId != null, Inventory::getProductId, productId);
+                .eq(productId != null, Inventory::getProductId, productId)
+                .gt(updatedAfter != null, Inventory::getUpdateTime, updatedAfter);
         return inventoryMapper.selectPage(new Page<>(current, size), q);
     }
 
@@ -42,28 +47,36 @@ public class InventoryServiceImpl implements InventoryService {
     @Transactional
     public void check(InventoryCheckDTO dto) {
         if (dto.getItems() == null) return;
-        for (InventoryCheckDTO.CheckItem ci : dto.getItems()) {
-            int actualQty = ci.getActualQty() != null ? ci.getActualQty() : 0;
-            Inventory inv = inventoryMapper.selectForUpdate(dto.getWarehouseId(), ci.getProductId());
-            int beforeQty = 0;
-            if (inv == null) {
-                inv = new Inventory();
-                inv.setWarehouseId(dto.getWarehouseId());
-                inv.setProductId(ci.getProductId());
-                inv.setQty(actualQty); inv.setAlertQty(0);
-                inventoryMapper.insert(inv);
-            } else {
-                beforeQty = inv.getQty();
-                inv.setQty(actualQty);
-                inventoryMapper.updateById(inv);
+        Long warehouseId = dto.getWarehouseId();
+        if (CHECKING.putIfAbsent(warehouseId, Boolean.TRUE) != null) {
+            throw new BusinessException("该仓库正在盘点中，请等待操作完成后再提交");
+        }
+        try {
+            for (InventoryCheckDTO.CheckItem ci : dto.getItems()) {
+                int actualQty = ci.getActualQty() != null ? ci.getActualQty() : 0;
+                Inventory inv = inventoryMapper.selectForUpdate(warehouseId, ci.getProductId());
+                int beforeQty = 0;
+                if (inv == null) {
+                    inv = new Inventory();
+                    inv.setWarehouseId(warehouseId);
+                    inv.setProductId(ci.getProductId());
+                    inv.setQty(actualQty); inv.setAlertQty(0);
+                    inventoryMapper.insert(inv);
+                } else {
+                    beforeQty = inv.getQty();
+                    inv.setQty(actualQty);
+                    inventoryMapper.updateById(inv);
+                }
+                InventoryLog log = new InventoryLog();
+                log.setWarehouseId(warehouseId);
+                log.setProductId(ci.getProductId());
+                log.setChangeQty(actualQty - beforeQty);
+                log.setBeforeQty(beforeQty); log.setAfterQty(actualQty);
+                log.setType("CHECK"); log.setRemark(dto.getRemark());
+                inventoryLogMapper.insert(log);
             }
-            InventoryLog log = new InventoryLog();
-            log.setWarehouseId(dto.getWarehouseId());
-            log.setProductId(ci.getProductId());
-            log.setChangeQty(actualQty - beforeQty);
-            log.setBeforeQty(beforeQty); log.setAfterQty(actualQty);
-            log.setType("CHECK"); log.setRemark(dto.getRemark());
-            inventoryLogMapper.insert(log);
+        } finally {
+            CHECKING.remove(warehouseId);
         }
     }
 
