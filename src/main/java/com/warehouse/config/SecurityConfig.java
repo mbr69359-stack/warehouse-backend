@@ -32,10 +32,14 @@ import java.util.Arrays;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final LoginRateLimitFilter loginRateLimitFilter;
     private final ObjectMapper objectMapper;
 
     @Value("${cors.allowed-origins}")
     private String allowedOrigins;
+
+    @Value("${knife4j.enable:false}")
+    private boolean knife4jEnabled;
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
@@ -61,14 +65,17 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        boolean swaggerEnabled = knife4jEnabled;
         http.cors().and().csrf().disable()
             .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             .and()
-            .authorizeRequests()
-                .antMatchers("/auth/login").permitAll()
-                .antMatchers("/v3/api-docs/**", "/swagger-ui/**", "/doc.html", "/webjars/**").permitAll()
-                .anyRequest().authenticated()
-            .and()
+            .authorizeRequests(registry -> {
+                registry.antMatchers("/auth/login").permitAll();
+                if (swaggerEnabled) {
+                    registry.antMatchers("/v3/api-docs/**", "/swagger-ui/**", "/doc.html", "/webjars/**").permitAll();
+                }
+                registry.anyRequest().authenticated();
+            })
             .exceptionHandling()
                 .authenticationEntryPoint((req, res, ex) -> {
                     res.setStatus(401);
@@ -83,6 +90,7 @@ public class SecurityConfig {
                     res.getWriter().write(objectMapper.writeValueAsString(Result.fail(ResultCode.FORBIDDEN)));
                 })
             .and()
+            .addFilterBefore(loginRateLimitFilter, JwtAuthFilter.class)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

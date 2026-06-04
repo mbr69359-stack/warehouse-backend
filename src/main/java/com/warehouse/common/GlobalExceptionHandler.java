@@ -56,7 +56,10 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<Void> handleRuntime(RuntimeException ex) {
         log.error("RuntimeException: {}", ex.getMessage(), ex);
-        return Result.fail(ResultCode.INTERNAL_ERROR);
+        // DEBUG: 临时暴露异常详情，排查后删除
+        String detail = ex.getClass().getSimpleName() + ": " + ex.getMessage();
+        if (ex.getCause() != null) detail += " | cause: " + ex.getCause().getMessage();
+        return Result.fail(500, detail);
     }
 
     @ExceptionHandler(Exception.class)
