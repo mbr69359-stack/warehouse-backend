@@ -90,7 +90,7 @@ public class SecurityConfig {
                     res.getWriter().write(objectMapper.writeValueAsString(Result.fail(ResultCode.FORBIDDEN)));
                 })
             .and()
-            .addFilterBefore(loginRateLimitFilter, JwtAuthFilter.class)
+            .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
