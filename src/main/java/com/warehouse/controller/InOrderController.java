@@ -11,6 +11,7 @@ import com.warehouse.entity.Supplier;
 import com.warehouse.entity.SysUser;
 import com.warehouse.mapper.SupplierMapper;
 import com.warehouse.mapper.SysUserMapper;
+import com.warehouse.config.JwtUserDetails;
 import com.warehouse.service.InOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,8 +19,10 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import javax.validation.constraints.Max;
 import java.util.List;
 
+@Validated
 @RestController
 @RequestMapping("/in-orders")
 @RequiredArgsConstructor
@@ -31,7 +34,7 @@ public class InOrderController {
     @GetMapping
     public Result<PageResult<InOrder>> page(
             @RequestParam(defaultValue = "1") int current,
-            @RequestParam(defaultValue = "10") int size,
+            @Max(200) @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long warehouseId,
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -60,7 +63,7 @@ public class InOrderController {
     }
 
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
     public Result<Void> confirm(@PathVariable Long id,
                                 @RequestBody(required = false) List<ConfirmItemDTO> items,
                                 @AuthenticationPrincipal UserDetails user) {
@@ -79,9 +82,6 @@ public class InOrderController {
     }
 
     private Long getUid(UserDetails user) {
-        SysUser u = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>()
-                .eq(SysUser::getUsername, user.getUsername()));
-        if (u == null) throw new com.warehouse.common.BusinessException("用户不存在");
-        return u.getId();
+        return ((JwtUserDetails) user).getUserId();
     }
 }

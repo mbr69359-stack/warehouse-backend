@@ -10,6 +10,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface InventoryMapper extends BaseMapper<Inventory> {
@@ -50,4 +51,13 @@ public interface InventoryMapper extends BaseMapper<Inventory> {
             "WHERE i.warehouse_id = #{warehouseId} " +
             "ORDER BY i.qty DESC")
     List<InventoryChartItemVO> selectChartByWarehouse(@Param("warehouseId") Long warehouseId);
+
+    @Select("<script>" +
+            "SELECT COUNT(*) AS totalSkus, " +
+            "IFNULL(SUM(qty), 0) AS totalQty, " +
+            "SUM(CASE WHEN alert_qty &gt; 0 AND qty &lt; alert_qty THEN 1 ELSE 0 END) AS alertCount " +
+            "FROM inventory" +
+            "<where><if test='warehouseId != null'>warehouse_id = #{warehouseId}</if></where>" +
+            "</script>")
+    Map<String, Object> selectInventorySummary(@Param("warehouseId") Long warehouseId);
 }

@@ -7,6 +7,7 @@ import com.warehouse.entity.Inventory;
 import com.warehouse.service.InventoryService;
 import com.warehouse.vo.InventoryChartItemVO;
 import com.warehouse.vo.InventoryStatsVO;
+import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 import lombok.Data;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Validated
 @RestController
 @RequestMapping("/inventory")
 @RequiredArgsConstructor
@@ -26,7 +28,7 @@ public class InventoryController {
     @GetMapping
     public Result<PageResult<Inventory>> page(
             @RequestParam(defaultValue = "1") int current,
-            @RequestParam(defaultValue = "10") int size,
+            @Max(200) @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) Long warehouseId,
             @RequestParam(required = false) Long productId,
             @RequestParam(required = false) String updatedAfter) {

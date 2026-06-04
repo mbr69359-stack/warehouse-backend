@@ -9,7 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import javax.validation.constraints.Max;
 
+@Validated
 @RestController
 @RequestMapping("/suppliers")
 @RequiredArgsConstructor
@@ -19,7 +21,7 @@ public class SupplierController {
     @GetMapping
     public Result<PageResult<Supplier>> page(
             @RequestParam(defaultValue = "1") int current,
-            @RequestParam(defaultValue = "10") int size,
+            @Max(200) @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String name) {
         return Result.success(PageResult.of(supplierService.page(current, size, name)));
     }

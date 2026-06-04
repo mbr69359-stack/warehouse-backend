@@ -1,5 +1,6 @@
 package com.warehouse.common;
 
+import javax.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +15,15 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleConstraintViolation(ConstraintViolationException ex) {
+        String msg = ex.getConstraintViolations().stream()
+                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                .findFirst().orElse("参数校验失败");
+        return Result.fail(ResultCode.BAD_REQUEST.getCode(), msg);
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)

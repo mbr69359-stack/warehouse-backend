@@ -31,7 +31,7 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(ResultCode.ACCOUNT_DISABLED);
         }
         List<String> roles = sysUserMapper.selectRoleCodesByUserId(user.getId());
-        String token = jwtUtil.generateToken(user.getUsername());
+        String token = jwtUtil.generateToken(user.getUsername(), user.getId());
         LoginResponse resp = new LoginResponse();
         resp.setToken(token);
         resp.setUsername(user.getUsername());

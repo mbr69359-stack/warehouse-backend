@@ -1,14 +1,12 @@
 package com.warehouse.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.warehouse.common.PageResult;
 import com.warehouse.common.Result;
+import com.warehouse.config.JwtUserDetails;
 import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.OutOrderDTO;
 import com.warehouse.entity.OutOrder;
 import com.warehouse.entity.OutOrderItem;
-import com.warehouse.entity.SysUser;
-import com.warehouse.mapper.SysUserMapper;
 import com.warehouse.service.OutOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,19 +14,20 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import javax.validation.constraints.Max;
 import java.util.List;
 
+@Validated
 @RestController
 @RequestMapping("/out-orders")
 @RequiredArgsConstructor
 public class OutOrderController {
     private final OutOrderService outOrderService;
-    private final SysUserMapper sysUserMapper;
 
     @GetMapping
     public Result<PageResult<OutOrder>> page(
             @RequestParam(defaultValue = "1") int current,
-            @RequestParam(defaultValue = "10") int size,
+            @Max(200) @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long warehouseId) {
         return Result.success(PageResult.of(outOrderService.page(current, size, status, warehouseId)));
@@ -42,7 +41,7 @@ public class OutOrderController {
     }
 
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
     public Result<Void> confirm(@PathVariable Long id,
                                 @RequestBody(required = false) List<ConfirmItemDTO> items,
                                 @AuthenticationPrincipal UserDetails user) {
@@ -61,9 +60,6 @@ public class OutOrderController {
     }
 
     private Long getUid(UserDetails user) {
-        SysUser u = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>()
-                .eq(SysUser::getUsername, user.getUsername()));
-        if (u == null) throw new com.warehouse.common.BusinessException("用户不存在");
-        return u.getId();
+        return ((JwtUserDetails) user).getUserId();
     }
 }

@@ -14,7 +14,7 @@ spring:
       initialization-fail-timeout: 60000
   sql:
     init:
-      mode: always
+      mode: never
       schema-locations: classpath:sql/init.sql
   data:
     redis:

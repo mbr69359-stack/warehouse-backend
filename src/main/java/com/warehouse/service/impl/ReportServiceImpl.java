@@ -1,7 +1,5 @@
 package com.warehouse.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.warehouse.entity.Inventory;
 import com.warehouse.mapper.InOrderMapper;
 import com.warehouse.mapper.InventoryMapper;
 import com.warehouse.mapper.OutOrderMapper;
@@ -10,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -42,14 +39,6 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public Map<String, Object> inventorySummary(Long warehouseId) {
-        List<Inventory> list = inventoryMapper.selectList(new LambdaQueryWrapper<Inventory>()
-                .eq(warehouseId != null, Inventory::getWarehouseId, warehouseId));
-        long totalQty = list.stream().mapToLong(i -> i.getQty() != null ? i.getQty() : 0L).sum();
-        long alertCount = list.stream().filter(Inventory::isAlert).count();
-        Map<String, Object> m = new HashMap<>();
-        m.put("totalSkus", list.size());
-        m.put("totalQty", totalQty);
-        m.put("alertCount", alertCount);
-        return m;
+        return inventoryMapper.selectInventorySummary(warehouseId);
     }
 }
