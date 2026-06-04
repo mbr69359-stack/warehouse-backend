@@ -5,6 +5,7 @@ import com.warehouse.common.Result;
 import com.warehouse.common.ResultCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -15,6 +16,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 @Component
@@ -23,6 +25,13 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
 
     private static final int MAX_ATTEMPTS = 10;
     private static final long WINDOW_SECONDS = 60;
+
+    // 原子地 INCR + 仅在首次设置 EXPIRE，避免非原子操作导致 key 永不过期
+    private static final DefaultRedisScript<Long> INCR_SCRIPT = new DefaultRedisScript<>(
+            "local c = redis.call('INCR', KEYS[1])" +
+            " if c == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end" +
+            " return c",
+            Long.class);
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -36,10 +45,9 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
             try {
                 String ip = getClientIp(request);
                 String key = "login:ratelimit:" + ip;
-                Long count = redisTemplate.opsForValue().increment(key);
-                if (count == 1) {
-                    redisTemplate.expire(key, WINDOW_SECONDS, TimeUnit.SECONDS);
-                }
+                Long count = redisTemplate.execute(INCR_SCRIPT,
+                        Collections.singletonList(key),
+                        String.valueOf(WINDOW_SECONDS));
                 if (count != null && count > MAX_ATTEMPTS) {
                     response.setStatus(429);
                     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
