@@ -3,6 +3,7 @@ package com.warehouse.config;
 import com.warehouse.common.JwtUtil;
 import com.warehouse.common.TokenBlacklistService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -17,6 +18,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -30,14 +32,20 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         String token = extractToken(request);
-        if (StringUtils.hasText(token) && jwtUtil.validateToken(token) && !tokenBlacklistService.isRevoked(token)) {
-            String username = jwtUtil.getUsernameFromToken(token);
-            Long userId = jwtUtil.getUserIdFromToken(token);
-            UserDetails base = userDetailsService.loadUserByUsername(username);
-            JwtUserDetails userDetails = new JwtUserDetails(userId, base.getUsername(), base.getPassword(), base.getAuthorities());
-            UsernamePasswordAuthenticationToken auth =
-                    new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-            SecurityContextHolder.getContext().setAuthentication(auth);
+        if (StringUtils.hasText(token) && jwtUtil.validateToken(token)) {
+            try {
+                if (!tokenBlacklistService.isRevoked(token)) {
+                    String username = jwtUtil.getUsernameFromToken(token);
+                    Long userId = jwtUtil.getUserIdFromToken(token);
+                    UserDetails base = userDetailsService.loadUserByUsername(username);
+                    JwtUserDetails userDetails = new JwtUserDetails(userId, base.getUsername(), base.getPassword(), base.getAuthorities());
+                    UsernamePasswordAuthenticationToken auth =
+                            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
+            } catch (Exception e) {
+                log.warn("JWT auth failed: {}", e.getMessage());
+            }
         }
         chain.doFilter(request, response);
     }
