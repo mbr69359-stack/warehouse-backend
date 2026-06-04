@@ -27,7 +27,7 @@ public class WarehouseController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public Result<Void> update(@PathVariable Long id, @RequestBody WarehouseDTO dto) {
+    public Result<Void> update(@PathVariable Long id, @RequestBody @Validated WarehouseDTO dto) {
         dto.setId(id); warehouseService.update(dto); return Result.success();
     }
 
