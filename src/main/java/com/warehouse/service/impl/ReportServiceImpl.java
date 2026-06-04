@@ -8,6 +8,8 @@ import com.warehouse.mapper.OutOrderMapper;
 import com.warehouse.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,14 +22,22 @@ public class ReportServiceImpl implements ReportService {
     private final OutOrderMapper outOrderMapper;
     private final InventoryMapper inventoryMapper;
 
+    private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     @Override
-    public List<Map<String, Object>> inDailyReport(String startDate, String endDate) {
-        return inOrderMapper.selectDailyReport(startDate + " 00:00:00", endDate + " 23:59:59");
+    public List<Map<String, Object>> inDailyReport(LocalDate startDate, LocalDate endDate) {
+        return inOrderMapper.selectDailyReport(
+            startDate.atStartOfDay().format(DT_FMT),
+            endDate.atTime(23, 59, 59).format(DT_FMT)
+        );
     }
 
     @Override
-    public List<Map<String, Object>> outDailyReport(String startDate, String endDate) {
-        return outOrderMapper.selectDailyReport(startDate + " 00:00:00", endDate + " 23:59:59");
+    public List<Map<String, Object>> outDailyReport(LocalDate startDate, LocalDate endDate) {
+        return outOrderMapper.selectDailyReport(
+            startDate.atStartOfDay().format(DT_FMT),
+            endDate.atTime(23, 59, 59).format(DT_FMT)
+        );
     }
 
     @Override

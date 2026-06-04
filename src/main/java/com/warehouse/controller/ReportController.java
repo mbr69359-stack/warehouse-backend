@@ -3,8 +3,10 @@ package com.warehouse.controller;
 import com.warehouse.common.Result;
 import com.warehouse.service.ReportService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -17,13 +19,15 @@ public class ReportController {
 
     @GetMapping("/in")
     public Result<List<Map<String, Object>>> inReport(
-            @RequestParam String startDate, @RequestParam String endDate) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return Result.success(reportService.inDailyReport(startDate, endDate));
     }
 
     @GetMapping("/out")
     public Result<List<Map<String, Object>>> outReport(
-            @RequestParam String startDate, @RequestParam String endDate) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return Result.success(reportService.outDailyReport(startDate, endDate));
     }
 
