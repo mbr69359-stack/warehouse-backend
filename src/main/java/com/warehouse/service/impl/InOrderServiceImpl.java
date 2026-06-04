@@ -11,9 +11,11 @@ import com.warehouse.service.InOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Service
@@ -23,7 +25,8 @@ public class InOrderServiceImpl implements InOrderService {
     private final InOrderMapper inOrderMapper;
     private final InOrderItemMapper inOrderItemMapper;
     private final InventoryMapper inventoryMapper;
-    private final InventoryLogMapper inventoryLogMapper;
+    private final InventoryLedgerMapper ledgerMapper;
+    private final StockSnapshotMapper snapshotMapper;
 
     @Override
     public Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId) {
@@ -67,8 +70,10 @@ public class InOrderServiceImpl implements InOrderService {
         InOrder order = inOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("入库单不存在");
         if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("该入库单已确认");
+
         List<InOrderItem> items = inOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
+
         if (actualItems != null && !actualItems.isEmpty()) {
             java.util.Map<Long, Integer> qtyMap = new java.util.HashMap<>();
             for (ConfirmItemDTO c : actualItems) qtyMap.put(c.getItemId(), c.getActualQty());
@@ -77,9 +82,12 @@ public class InOrderServiceImpl implements InOrderService {
                 if (qty != null) { item.setActualQty(qty); inOrderItemMapper.updateById(item); }
             }
         }
+
         for (InOrderItem item : items) {
             int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
+
+            // 行锁：确保并发入库串行化
             Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
             int beforeQty;
             if (inv == null) {
@@ -95,13 +103,27 @@ public class InOrderServiceImpl implements InOrderService {
                 if (inventoryMapper.updateById(inv) == 0)
                     throw new BusinessException("库存数据已被并发修改，请刷新后重试");
             }
-            InventoryLog log = new InventoryLog();
-            log.setWarehouseId(order.getWarehouseId());
-            log.setProductId(item.getProductId());
-            log.setChangeQty(qty); log.setBeforeQty(beforeQty); log.setAfterQty(beforeQty + qty);
-            log.setType("IN"); log.setRefOrderId(orderId);
-            inventoryLogMapper.insert(log);
+
+            int afterQty = beforeQty + qty;
+
+            // 追加流水（核心：只增不改）
+            InventoryLedger entry = new InventoryLedger();
+            entry.setId(UUID.randomUUID().toString());
+            entry.setProductId(item.getProductId());
+            entry.setLocationId(order.getWarehouseId());
+            entry.setChangeQty(new BigDecimal(qty));
+            entry.setType("inbound");
+            entry.setDocumentNo(order.getOrderNo());
+            entry.setOperator(String.valueOf(operatorId));
+            entry.setOccurredAt(LocalDateTime.now());
+            entry.setSynced(1);
+            ledgerMapper.insert(entry);
+
+            // 更新快照缓存
+            snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
+                    new BigDecimal(afterQty), inv.getAlertQty() != null ? inv.getAlertQty() : 0);
         }
+
         order.setStatus("CONFIRMED");
         order.setConfirmTime(LocalDateTime.now());
         inOrderMapper.updateById(order);
@@ -118,29 +140,42 @@ public class InOrderServiceImpl implements InOrderService {
     public void delete(Long orderId) {
         InOrder order = inOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("入库单不存在");
+
         if ("CONFIRMED".equals(order.getStatus())) {
             List<InOrderItem> items = inOrderItemMapper.selectList(
                     new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
             for (InOrderItem item : items) {
                 int actualQty = item.getActualQty() != null ? item.getActualQty() : 0;
-                if (actualQty > 0) {
-                    Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
-                    int beforeQty = inv != null ? inv.getQty() : 0;
-                    if (beforeQty < actualQty)
-                        throw new BusinessException("库存不足以撤销入库，当前库存：" + beforeQty + "，需撤回：" + actualQty);
-                    inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), -actualQty);
-                    InventoryLog cancelLog = new InventoryLog();
-                    cancelLog.setWarehouseId(order.getWarehouseId());
-                    cancelLog.setProductId(item.getProductId());
-                    cancelLog.setChangeQty(-actualQty);
-                    cancelLog.setBeforeQty(beforeQty);
-                    cancelLog.setAfterQty(beforeQty - actualQty);
-                    cancelLog.setType("IN_CANCEL");
-                    cancelLog.setRefOrderId(orderId);
-                    inventoryLogMapper.insert(cancelLog);
-                }
+                if (actualQty <= 0) continue;
+
+                Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
+                int beforeQty = inv != null ? inv.getQty() : 0;
+                if (beforeQty < actualQty)
+                    throw new BusinessException("库存不足以撤销入库，当前库存：" + beforeQty + "，需撤回：" + actualQty);
+
+                int afterQty = beforeQty - actualQty;
+                inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), -actualQty);
+
+                // 追加撤销流水（负数）
+                InventoryLedger entry = new InventoryLedger();
+                entry.setId(UUID.randomUUID().toString());
+                entry.setProductId(item.getProductId());
+                entry.setLocationId(order.getWarehouseId());
+                entry.setChangeQty(new BigDecimal(-actualQty));
+                entry.setType("inbound_cancel");
+                entry.setDocumentNo(order.getOrderNo());
+                entry.setOperator("system");
+                entry.setNote("撤销入库单 " + order.getOrderNo());
+                entry.setOccurredAt(LocalDateTime.now());
+                entry.setSynced(1);
+                ledgerMapper.insert(entry);
+
+                // 更新快照
+                snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
+                        new BigDecimal(afterQty), inv != null && inv.getAlertQty() != null ? inv.getAlertQty() : 0);
             }
         }
+
         inOrderItemMapper.delete(new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
         inOrderMapper.deleteById(orderId);
     }

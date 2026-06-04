@@ -299,3 +299,42 @@ ALTER TABLE sys_user  MODIFY COLUMN update_time TIMESTAMP NOT NULL DEFAULT CURRE
 ALTER TABLE warehouse MODIFY COLUMN update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
 ALTER TABLE product   MODIFY COLUMN update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
 ALTER TABLE supplier  MODIFY COLUMN update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
+-- =============================================
+-- Append-only 库存流水账（v4 迁移）
+-- =============================================
+
+-- 给 product 加 uuid 列（离线友好，用于外部引用）
+ALTER TABLE product ADD COLUMN IF NOT EXISTS uuid CHAR(36) NOT NULL DEFAULT '';
+UPDATE product SET uuid = UUID() WHERE uuid = '';
+ALTER TABLE product ADD UNIQUE KEY IF NOT EXISTS uq_product_uuid (uuid);
+
+-- 库存流水表（核心，只增不改）
+CREATE TABLE IF NOT EXISTS inventory_ledger (
+    id          CHAR(36)       NOT NULL PRIMARY KEY,   -- 前端/设备生成 UUID
+    product_id  BIGINT         NOT NULL,               -- 引用 product.id
+    location_id BIGINT         NOT NULL DEFAULT 0,     -- 引用 warehouse.id；0 = 全局（无仓库）
+    change_qty  DECIMAL(14,3)  NOT NULL,               -- 正=入 负=出
+    type        VARCHAR(20)    NOT NULL,               -- inbound/outbound/adjust/transfer/transfer_in/opening/inbound_cancel/outbound_cancel/transfer_cancel
+    document_no VARCHAR(50)    NULL,                   -- 关联单号
+    operator    VARCHAR(100)   NOT NULL DEFAULT '',    -- 操作人（用户 ID 或名称）
+    note        VARCHAR(500)   NULL,
+    occurred_at DATETIME       NOT NULL,               -- 业务发生时间（UTC）
+    device_id   VARCHAR(100)   NULL,                   -- 离线设备 ID
+    synced      TINYINT        NOT NULL DEFAULT 1,     -- 1=已同步 0=待同步
+    created_at  DATETIME       NOT NULL DEFAULT (UTC_TIMESTAMP())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE INDEX IF NOT EXISTS idx_ledger_prod_loc_time ON inventory_ledger(product_id, location_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_ledger_document_no   ON inventory_ledger(document_no);
+CREATE INDEX IF NOT EXISTS idx_ledger_type          ON inventory_ledger(type, occurred_at);
+
+-- 当前库存快照表（由流水派生的缓存，不是真相）
+CREATE TABLE IF NOT EXISTS stock_snapshot (
+    product_id  BIGINT         NOT NULL,
+    location_id BIGINT         NOT NULL DEFAULT 0,
+    current_qty DECIMAL(14,3)  NOT NULL DEFAULT 0,
+    alert_qty   INT            NOT NULL DEFAULT 0,
+    updated_at  DATETIME       NOT NULL,
+    PRIMARY KEY (product_id, location_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
