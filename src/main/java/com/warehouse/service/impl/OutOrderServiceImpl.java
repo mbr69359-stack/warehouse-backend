@@ -169,6 +169,8 @@ public class OutOrderServiceImpl implements OutOrderService {
                     if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
                         Inventory tgtInv = inventoryMapper.selectForUpdate(order.getTargetWarehouseId(), item.getProductId());
                         int tgtBefore = tgtInv != null ? tgtInv.getQty() : 0;
+                        if (tgtBefore < restoreQty)
+                            throw new BusinessException("目标仓库库存不足以撤销调拨，当前：" + tgtBefore + "，需撤回：" + restoreQty);
                         inventoryMapper.updateQty(order.getTargetWarehouseId(), item.getProductId(), -restoreQty);
                         InventoryLog transferCancelLog = new InventoryLog();
                         transferCancelLog.setWarehouseId(order.getTargetWarehouseId());

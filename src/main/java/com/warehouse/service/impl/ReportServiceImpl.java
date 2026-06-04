@@ -44,7 +44,7 @@ public class ReportServiceImpl implements ReportService {
     public Map<String, Object> inventorySummary(Long warehouseId) {
         List<Inventory> list = inventoryMapper.selectList(new LambdaQueryWrapper<Inventory>()
                 .eq(warehouseId != null, Inventory::getWarehouseId, warehouseId));
-        long totalQty = list.stream().mapToLong(Inventory::getQty).sum();
+        long totalQty = list.stream().mapToLong(i -> i.getQty() != null ? i.getQty() : 0L).sum();
         long alertCount = list.stream().filter(Inventory::isAlert).count();
         Map<String, Object> m = new HashMap<>();
         m.put("totalSkus", list.size());

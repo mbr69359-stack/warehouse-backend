@@ -63,6 +63,7 @@ public class OutOrderController {
     private Long getUid(UserDetails user) {
         SysUser u = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, user.getUsername()));
+        if (u == null) throw new com.warehouse.common.BusinessException("用户不存在");
         return u.getId();
     }
 }

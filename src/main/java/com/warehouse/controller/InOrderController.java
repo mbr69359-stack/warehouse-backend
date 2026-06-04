@@ -41,9 +41,13 @@ public class InOrderController {
         if (isSupplier) {
             SysUser u = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                     .eq(SysUser::getUsername, userDetails.getUsername()));
-            Supplier s = supplierMapper.selectOne(new LambdaQueryWrapper<Supplier>()
-                    .eq(Supplier::getUserId, u.getId()));
-            supplierId = s != null ? s.getId() : -1L;
+            if (u != null) {
+                Supplier s = supplierMapper.selectOne(new LambdaQueryWrapper<Supplier>()
+                        .eq(Supplier::getUserId, u.getId()));
+                supplierId = s != null ? s.getId() : -1L;
+            } else {
+                supplierId = -1L;
+            }
         }
         return Result.success(PageResult.of(inOrderService.page(current, size, status, warehouseId, supplierId)));
     }
@@ -77,6 +81,7 @@ public class InOrderController {
     private Long getUid(UserDetails user) {
         SysUser u = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, user.getUsername()));
+        if (u == null) throw new com.warehouse.common.BusinessException("用户不存在");
         return u.getId();
     }
 }
