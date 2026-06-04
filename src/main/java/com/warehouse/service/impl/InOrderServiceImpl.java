@@ -26,10 +26,11 @@ public class InOrderServiceImpl implements InOrderService {
     private final InventoryLogMapper inventoryLogMapper;
 
     @Override
-    public Page<InOrder> page(int current, int size, String status, Long warehouseId) {
+    public Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId) {
         LambdaQueryWrapper<InOrder> q = new LambdaQueryWrapper<InOrder>()
                 .eq(status != null, InOrder::getStatus, status)
                 .eq(warehouseId != null, InOrder::getWarehouseId, warehouseId)
+                .eq(supplierId != null, InOrder::getSupplierId, supplierId)
                 .orderByDesc(InOrder::getCreateTime);
         return inOrderMapper.selectPage(new Page<>(current, size), q);
     }

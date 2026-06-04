@@ -8,7 +8,7 @@ import com.warehouse.entity.InOrderItem;
 import java.util.List;
 
 public interface InOrderService {
-    Page<InOrder> page(int current, int size, String status, Long warehouseId);
+    Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId);
     Long create(InOrderDTO dto, Long operatorId);
     void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId);
     List<InOrderItem> getItems(Long orderId);

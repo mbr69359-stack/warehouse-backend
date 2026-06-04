@@ -7,7 +7,9 @@ import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.InOrderDTO;
 import com.warehouse.entity.InOrder;
 import com.warehouse.entity.InOrderItem;
+import com.warehouse.entity.Supplier;
 import com.warehouse.entity.SysUser;
+import com.warehouse.mapper.SupplierMapper;
 import com.warehouse.mapper.SysUserMapper;
 import com.warehouse.service.InOrderService;
 import lombok.RequiredArgsConstructor;
@@ -24,14 +26,26 @@ import java.util.List;
 public class InOrderController {
     private final InOrderService inOrderService;
     private final SysUserMapper sysUserMapper;
+    private final SupplierMapper supplierMapper;
 
     @GetMapping
     public Result<PageResult<InOrder>> page(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) Long warehouseId) {
-        return Result.success(PageResult.of(inOrderService.page(current, size, status, warehouseId)));
+            @RequestParam(required = false) Long warehouseId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        Long supplierId = null;
+        boolean isSupplier = userDetails.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_SUPPLIER"));
+        if (isSupplier) {
+            SysUser u = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>()
+                    .eq(SysUser::getUsername, userDetails.getUsername()));
+            Supplier s = supplierMapper.selectOne(new LambdaQueryWrapper<Supplier>()
+                    .eq(Supplier::getUserId, u.getId()));
+            supplierId = s != null ? s.getId() : -1L;
+        }
+        return Result.success(PageResult.of(inOrderService.page(current, size, status, warehouseId, supplierId)));
     }
 
     @PostMapping

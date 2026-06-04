@@ -30,6 +30,7 @@ public class InventoryController {
     }
 
     @GetMapping("/alerts")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<List<Inventory>> alerts() {
         return Result.success(inventoryService.listAlerts());
     }
