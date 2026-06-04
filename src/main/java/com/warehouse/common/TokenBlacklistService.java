@@ -1,26 +1,35 @@
 package com.warehouse.common;
 
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
-@RequiredArgsConstructor
 public class TokenBlacklistService {
 
-    private static final String PREFIX = "token:blacklist:";
-
-    private final StringRedisTemplate redisTemplate;
+    private final ConcurrentHashMap<String, Long> blacklist = new ConcurrentHashMap<>();
 
     public void revoke(String token, long expiryMs) {
-        long ttlMs = expiryMs - System.currentTimeMillis();
-        if (ttlMs <= 0) return;
-        redisTemplate.opsForValue().set(PREFIX + token, "1", ttlMs, TimeUnit.MILLISECONDS);
+        if (expiryMs > System.currentTimeMillis()) {
+            blacklist.put(token, expiryMs);
+        }
     }
 
     public boolean isRevoked(String token) {
-        return Boolean.TRUE.equals(redisTemplate.hasKey(PREFIX + token));
+        Long exp = blacklist.get(token);
+        if (exp == null) return false;
+        if (System.currentTimeMillis() >= exp) {
+            blacklist.remove(token);
+            return false;
+        }
+        return true;
+    }
+
+    // clean up expired entries every hour
+    @Scheduled(fixedDelay = 3_600_000)
+    public void cleanup() {
+        long now = System.currentTimeMillis();
+        blacklist.entrySet().removeIf(e -> now >= e.getValue());
     }
 }
