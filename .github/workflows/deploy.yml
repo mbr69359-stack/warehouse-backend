@@ -57,4 +57,5 @@ jobs:
              }
              inject JWT_SECRET '$JWT_SECRET'
              inject SPRING_REDIS_URL '$SPRING_REDIS_URL'
+             inject CORS_ALLOWED_ORIGINS 'https://xiaocup.com,https://warehouse-frontend.vercel.app'
              systemctl daemon-reload"
