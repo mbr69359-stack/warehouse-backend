@@ -24,6 +24,7 @@ public class OutOrderServiceImpl implements OutOrderService {
     private final OutOrderItemMapper outOrderItemMapper;
     private final InventoryMapper inventoryMapper;
     private final InventoryLogMapper inventoryLogMapper;
+    private final WarehouseMapper warehouseMapper;
 
     @Override
     public Page<OutOrder> page(int current, int size, String status, Long warehouseId) {
@@ -60,11 +61,17 @@ public class OutOrderServiceImpl implements OutOrderService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
         OutOrder order = outOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("出库单不存在");
         if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("该出库单已确认");
+        if ("TRANSFER".equals(order.getType())) {
+            if (order.getTargetWarehouseId() == null) throw new BusinessException("调拨单缺少目标仓库");
+            Warehouse targetWarehouse = warehouseMapper.selectById(order.getTargetWarehouseId());
+            if (targetWarehouse == null) throw new BusinessException("目标仓库不存在或已删除");
+            if (Integer.valueOf(0).equals(targetWarehouse.getStatus())) throw new BusinessException("目标仓库已禁用，无法入库");
+        }
         List<OutOrderItem> items = outOrderItemMapper.selectList(
                 new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
         if (actualItems != null && !actualItems.isEmpty()) {
