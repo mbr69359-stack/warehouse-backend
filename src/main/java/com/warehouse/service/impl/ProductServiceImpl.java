@@ -1,6 +1,7 @@
 package com.warehouse.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.dto.ProductDTO;
 import com.warehouse.entity.Inventory;
@@ -12,6 +13,7 @@ import com.warehouse.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -57,6 +59,10 @@ public class ProductServiceImpl implements ProductService {
                 .eq(Inventory::getProductId, id).gt(Inventory::getQty, 0))
                 .stream().mapToInt(Inventory::getQty).sum();
         if (stock > 0) throw new BusinessException("该商品仍有库存 " + stock + " 件，无法删除");
-        productMapper.deleteById(id);
+        productMapper.update(null, new LambdaUpdateWrapper<Product>()
+                .eq(Product::getId, id)
+                .eq(Product::getDeleted, 0)
+                .set(Product::getDeleted, 1)
+                .set(Product::getUpdateTime, LocalDateTime.now()));
     }
 }
