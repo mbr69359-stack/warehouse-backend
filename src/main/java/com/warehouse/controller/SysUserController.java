@@ -9,8 +9,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import javax.validation.constraints.Max;
-
 @Validated
 @RestController
 @RequestMapping("/sys/users")
@@ -23,7 +21,7 @@ public class SysUserController {
     @GetMapping
     public Result<PageResult<SysUser>> page(
             @RequestParam(defaultValue = "1") int current,
-            @Max(200) @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String username) {
         return Result.success(PageResult.of(sysUserService.page(current, size, username)));
     }

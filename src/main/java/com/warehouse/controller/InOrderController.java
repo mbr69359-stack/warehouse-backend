@@ -19,7 +19,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import javax.validation.constraints.Max;
 import java.util.List;
 
 @Validated
@@ -34,7 +33,7 @@ public class InOrderController {
     @GetMapping
     public Result<PageResult<InOrder>> page(
             @RequestParam(defaultValue = "1") int current,
-            @Max(200) @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long warehouseId,
             @AuthenticationPrincipal UserDetails userDetails) {

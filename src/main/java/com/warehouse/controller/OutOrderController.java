@@ -14,7 +14,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import javax.validation.constraints.Max;
 import java.util.List;
 
 @Validated
@@ -27,7 +26,7 @@ public class OutOrderController {
     @GetMapping
     public Result<PageResult<OutOrder>> page(
             @RequestParam(defaultValue = "1") int current,
-            @Max(200) @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long warehouseId) {
         return Result.success(PageResult.of(outOrderService.page(current, size, status, warehouseId)));
