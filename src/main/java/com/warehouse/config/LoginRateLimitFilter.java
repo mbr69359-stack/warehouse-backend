@@ -33,19 +33,23 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
                                     FilterChain chain) throws ServletException, IOException {
         if ("POST".equalsIgnoreCase(request.getMethod())
                 && "/auth/login".equals(request.getServletPath())) {
-            String ip = getClientIp(request);
-            String key = "login:ratelimit:" + ip;
-            Long count = redisTemplate.opsForValue().increment(key);
-            if (count == 1) {
-                redisTemplate.expire(key, WINDOW_SECONDS, TimeUnit.SECONDS);
-            }
-            if (count != null && count > MAX_ATTEMPTS) {
-                response.setStatus(429);
-                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-                response.getWriter().write(objectMapper.writeValueAsString(
-                        Result.fail(ResultCode.TOO_MANY_REQUESTS)));
-                return;
+            try {
+                String ip = getClientIp(request);
+                String key = "login:ratelimit:" + ip;
+                Long count = redisTemplate.opsForValue().increment(key);
+                if (count == 1) {
+                    redisTemplate.expire(key, WINDOW_SECONDS, TimeUnit.SECONDS);
+                }
+                if (count != null && count > MAX_ATTEMPTS) {
+                    response.setStatus(429);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                    response.getWriter().write(objectMapper.writeValueAsString(
+                            Result.fail(ResultCode.TOO_MANY_REQUESTS)));
+                    return;
+                }
+            } catch (Exception e) {
+                // Redis 不可用时放行，限流失效但不影响登录
             }
         }
         chain.doFilter(request, response);
