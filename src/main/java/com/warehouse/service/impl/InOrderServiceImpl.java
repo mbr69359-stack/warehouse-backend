@@ -80,9 +80,7 @@ public class InOrderServiceImpl implements InOrderService {
         for (InOrderItem item : items) {
             int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
-            Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
-                    .eq(Inventory::getWarehouseId, order.getWarehouseId())
-                    .eq(Inventory::getProductId, item.getProductId()));
+            Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
             int beforeQty;
             if (inv == null) {
                 inv = new Inventory();
@@ -128,6 +126,8 @@ public class InOrderServiceImpl implements InOrderService {
                 if (actualQty > 0) {
                     Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
                     int beforeQty = inv != null ? inv.getQty() : 0;
+                    if (beforeQty < actualQty)
+                        throw new BusinessException("库存不足以撤销入库，当前库存：" + beforeQty + "，需撤回：" + actualQty);
                     inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), -actualQty);
                     InventoryLog cancelLog = new InventoryLog();
                     cancelLog.setWarehouseId(order.getWarehouseId());

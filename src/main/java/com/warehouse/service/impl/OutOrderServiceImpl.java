@@ -85,9 +85,7 @@ public class OutOrderServiceImpl implements OutOrderService {
         for (OutOrderItem item : items) {
             int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
-            Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
-                    .eq(Inventory::getWarehouseId, order.getWarehouseId())
-                    .eq(Inventory::getProductId, item.getProductId()));
+            Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
             if (inv == null || inv.getQty() < qty) {
                 throw new BusinessException("商品ID " + item.getProductId() + " 库存不足，当前：" +
                         (inv == null ? 0 : inv.getQty()) + "，需要：" + qty);
@@ -104,9 +102,7 @@ public class OutOrderServiceImpl implements OutOrderService {
             inventoryLogMapper.insert(log);
             // 调拨出库：同步增加目标仓库库存
             if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
-                Inventory targetInv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
-                        .eq(Inventory::getWarehouseId, order.getTargetWarehouseId())
-                        .eq(Inventory::getProductId, item.getProductId()));
+                Inventory targetInv = inventoryMapper.selectForUpdate(order.getTargetWarehouseId(), item.getProductId());
                 int targetBefore;
                 if (targetInv == null) {
                     targetInv = new Inventory();

@@ -7,6 +7,7 @@ public enum ResultCode {
     FORBIDDEN(403, "没有操作权限"),
     NOT_FOUND(404, "资源不存在"),
     INTERNAL_ERROR(500, "服务器内部错误"),
+    ACCOUNT_DISABLED(403, "账户已被禁用"),
     STOCK_NOT_ENOUGH(4001, "库存不足"),
     DUPLICATE_ORDER(4002, "订单号重复");
 

@@ -7,6 +7,8 @@ import com.warehouse.entity.Inventory;
 import com.warehouse.service.InventoryService;
 import com.warehouse.vo.InventoryChartItemVO;
 import com.warehouse.vo.InventoryStatsVO;
+import javax.validation.constraints.Min;
+import javax.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -46,7 +48,7 @@ public class InventoryController {
 
     @PutMapping("/alert")
     @PreAuthorize("hasRole('ADMIN')")
-    public Result<Void> setAlert(@RequestBody AlertReq req) {
+    public Result<Void> setAlert(@RequestBody @Validated AlertReq req) {
         inventoryService.setAlertQty(req.getWarehouseId(), req.getProductId(), req.getAlertQty());
         return Result.success();
     }
@@ -65,8 +67,12 @@ public class InventoryController {
 
     @Data
     static class AlertReq {
+        @NotNull(message = "仓库不能为空")
         private Long warehouseId;
+        @NotNull(message = "商品不能为空")
         private Long productId;
+        @NotNull(message = "预警数量不能为空")
+        @Min(value = 0, message = "预警数量不能为负数")
         private Integer alertQty;
     }
 }

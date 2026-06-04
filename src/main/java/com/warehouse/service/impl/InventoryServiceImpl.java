@@ -83,17 +83,18 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     public void setAlertQty(Long warehouseId, Long productId, Integer alertQty) {
         if (alertQty == null || alertQty < 0) throw new BusinessException("预警数量不能为负数");
-        Inventory inv;
         try {
-            inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
+            Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
                     .eq(Inventory::getWarehouseId, warehouseId)
                     .eq(Inventory::getProductId, productId));
+            if (inv == null) throw new BusinessException("库存记录不存在，请先入库");
+            inv.setAlertQty(alertQty);
+            inventoryMapper.updateById(inv);
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
-            throw new BusinessException("查询库存记录异常：" + e.getMessage());
+            throw new BusinessException("操作库存记录异常：" + e.getMessage());
         }
-        if (inv == null) throw new BusinessException("库存记录不存在，请先入库");
-        inv.setAlertQty(alertQty);
-        inventoryMapper.updateById(inv);
     }
 
     @Override

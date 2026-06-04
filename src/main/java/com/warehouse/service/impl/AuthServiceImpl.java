@@ -27,6 +27,9 @@ public class AuthServiceImpl implements AuthService {
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new BusinessException(ResultCode.UNAUTHORIZED);
         }
+        if (Integer.valueOf(0).equals(user.getStatus())) {
+            throw new BusinessException(ResultCode.ACCOUNT_DISABLED);
+        }
         List<String> roles = sysUserMapper.selectRoleCodesByUserId(user.getId());
         String token = jwtUtil.generateToken(user.getUsername());
         LoginResponse resp = new LoginResponse();
