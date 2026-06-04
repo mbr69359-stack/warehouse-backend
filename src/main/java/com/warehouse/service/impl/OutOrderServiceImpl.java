@@ -85,13 +85,17 @@ public class OutOrderServiceImpl implements OutOrderService {
         for (OutOrderItem item : items) {
             int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
-            Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
+            Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
+                    .eq(Inventory::getWarehouseId, order.getWarehouseId())
+                    .eq(Inventory::getProductId, item.getProductId()));
             if (inv == null || inv.getQty() < qty) {
                 throw new BusinessException("商品ID " + item.getProductId() + " 库存不足，当前：" +
                         (inv == null ? 0 : inv.getQty()) + "，需要：" + qty);
             }
             int beforeQty = inv.getQty();
-            inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), -qty);
+            inv.setQty(beforeQty - qty);
+            if (inventoryMapper.updateById(inv) == 0)
+                throw new BusinessException("库存数据已被并发修改，请刷新后重试");
             InventoryLog log = new InventoryLog();
             log.setWarehouseId(order.getWarehouseId());
             log.setProductId(item.getProductId());
@@ -100,9 +104,23 @@ public class OutOrderServiceImpl implements OutOrderService {
             inventoryLogMapper.insert(log);
             // 调拨出库：同步增加目标仓库库存
             if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
-                Inventory targetInv = inventoryMapper.selectForUpdate(order.getTargetWarehouseId(), item.getProductId());
-                int targetBefore = targetInv != null ? targetInv.getQty() : 0;
-                inventoryMapper.upsertQty(order.getTargetWarehouseId(), item.getProductId(), qty);
+                Inventory targetInv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
+                        .eq(Inventory::getWarehouseId, order.getTargetWarehouseId())
+                        .eq(Inventory::getProductId, item.getProductId()));
+                int targetBefore;
+                if (targetInv == null) {
+                    targetInv = new Inventory();
+                    targetInv.setWarehouseId(order.getTargetWarehouseId());
+                    targetInv.setProductId(item.getProductId());
+                    targetInv.setQty(qty); targetInv.setAlertQty(0);
+                    inventoryMapper.insert(targetInv);
+                    targetBefore = 0;
+                } else {
+                    targetBefore = targetInv.getQty();
+                    targetInv.setQty(targetBefore + qty);
+                    if (inventoryMapper.updateById(targetInv) == 0)
+                        throw new BusinessException("目标仓库库存数据已被并发修改，请刷新后重试");
+                }
                 InventoryLog transferLog = new InventoryLog();
                 transferLog.setWarehouseId(order.getTargetWarehouseId());
                 transferLog.setProductId(item.getProductId());

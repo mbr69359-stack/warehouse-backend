@@ -13,6 +13,8 @@ public class Inventory {
     private Long productId;
     private Integer qty;
     private Integer alertQty;
+    @Version
+    private Integer version;
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 

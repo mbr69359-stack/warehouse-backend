@@ -61,14 +61,13 @@ public class InOrderServiceImpl implements InOrderService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
         InOrder order = inOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("入库单不存在");
         if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("该入库单已确认");
         List<InOrderItem> items = inOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
-        // Write actual quantities from the confirm request
         if (actualItems != null && !actualItems.isEmpty()) {
             java.util.Map<Long, Integer> qtyMap = new java.util.HashMap<>();
             for (ConfirmItemDTO c : actualItems) qtyMap.put(c.getItemId(), c.getActualQty());
@@ -80,7 +79,9 @@ public class InOrderServiceImpl implements InOrderService {
         for (InOrderItem item : items) {
             int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
-            Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
+            Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
+                    .eq(Inventory::getWarehouseId, order.getWarehouseId())
+                    .eq(Inventory::getProductId, item.getProductId()));
             int beforeQty;
             if (inv == null) {
                 inv = new Inventory();
@@ -91,7 +92,9 @@ public class InOrderServiceImpl implements InOrderService {
                 beforeQty = 0;
             } else {
                 beforeQty = inv.getQty();
-                inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), qty);
+                inv.setQty(beforeQty + qty);
+                if (inventoryMapper.updateById(inv) == 0)
+                    throw new BusinessException("库存数据已被并发修改，请刷新后重试");
             }
             InventoryLog log = new InventoryLog();
             log.setWarehouseId(order.getWarehouseId());
