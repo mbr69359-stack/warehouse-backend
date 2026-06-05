@@ -117,7 +117,7 @@ public class LedgerMigrationRunner implements CommandLineRunner {
             "WHERE i.qty != 0 " +
             "  AND NOT EXISTS (" +
             "      SELECT 1 FROM inventory_ledger l " +
-            "      WHERE l.product_id = i.product_id AND l.location_id = i.warehouse_id AND l.type = 'opening'" +
+            "      WHERE l.product_id = i.product_id AND l.location_id = i.warehouse_id" +
             "  )"
         );
         if (inserted > 0) {
