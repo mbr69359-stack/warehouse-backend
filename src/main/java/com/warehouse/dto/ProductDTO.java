@@ -17,6 +17,8 @@ public class ProductDTO {
     private String unit;
     @NotNull(message = "价格不能为空")
     private BigDecimal price;
+    private String spec;
+    private String barcode;
     private String image;
     private String remark;
     private Integer status;

@@ -26,6 +26,7 @@ public class LedgerMigrationRunner implements CommandLineRunner {
 
         ensureTables();
         ensureProductUuid();
+        ensureProductSpecBarcode();
         migrateOpeningBalances();
         rebuildSnapshot();
         syncInventoryFromLedger();
@@ -88,6 +89,22 @@ public class LedgerMigrationRunner implements CommandLineRunner {
             Integer.class);
         if (idxExists == 0) {
             jdbc.execute("ALTER TABLE product ADD UNIQUE KEY uq_product_uuid (uuid)");
+        }
+    }
+
+    private void ensureProductSpecBarcode() {
+        addColumnIfMissing("product", "spec", "ALTER TABLE product ADD COLUMN spec VARCHAR(500) NULL");
+        addColumnIfMissing("product", "barcode", "ALTER TABLE product ADD COLUMN barcode VARCHAR(100) NULL");
+    }
+
+    private void addColumnIfMissing(String table, String column, String alterSql) {
+        Integer cnt = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+            Integer.class, table, column);
+        if (cnt != null && cnt == 0) {
+            jdbc.execute(alterSql);
+            log.info("[LedgerMigration] {}.{} 列已添加", table, column);
         }
     }
 

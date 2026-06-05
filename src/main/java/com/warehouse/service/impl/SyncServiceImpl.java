@@ -1,13 +1,11 @@
 package com.warehouse.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.warehouse.common.BusinessException;
 import com.warehouse.dto.SyncItemDTO;
 import com.warehouse.dto.SyncResultDTO;
-import com.warehouse.entity.Inventory;
 import com.warehouse.entity.InventoryLedger;
+import com.warehouse.entity.StockSnapshot;
 import com.warehouse.mapper.InventoryLedgerMapper;
-import com.warehouse.mapper.InventoryMapper;
 import com.warehouse.mapper.StockSnapshotMapper;
 import com.warehouse.service.SyncService;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +25,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SyncServiceImpl implements SyncService {
 
-    private final InventoryMapper inventoryMapper;
     private final InventoryLedgerMapper inventoryLedgerMapper;
     private final StockSnapshotMapper stockSnapshotMapper;
 
@@ -37,33 +34,31 @@ public class SyncServiceImpl implements SyncService {
         items.sort(Comparator.comparing(SyncItemDTO::getCreatedAt,
                 Comparator.nullsLast(Comparator.naturalOrder())));
 
-        // Phase 1: 全批校验（累计模拟库存，不写 DB）
-        Map<String, Integer> simQty = new HashMap<>();
+        // Phase 1: 全批校验（从 snapshot 读当前库存，累计模拟，不写 DB）
+        Map<String, BigDecimal> simQty = new HashMap<>();
         List<SyncResultDTO> phase1 = new ArrayList<>();
         boolean hasError = false;
         for (int i = 0; i < items.size(); i++) {
             SyncItemDTO item = items.get(i);
             String key = item.getWarehouseId() + ":" + item.getProductId();
             if (!simQty.containsKey(key)) {
-                Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
-                        .eq(Inventory::getWarehouseId, item.getWarehouseId())
-                        .eq(Inventory::getProductId, item.getProductId()));
-                simQty.put(key, inv != null ? inv.getQty() : 0);
+                StockSnapshot snap = stockSnapshotMapper.selectOne(item.getProductId(), item.getWarehouseId());
+                simQty.put(key, snap != null ? snap.getCurrentQty() : BigDecimal.ZERO);
             }
             int absQty = Math.abs(item.getQty());
             boolean isOut = "OUT".equals(item.getType()) || item.getQty() < 0;
-            int current = simQty.get(key);
-            if (isOut && current < absQty) {
+            BigDecimal current = simQty.get(key);
+            if (isOut && current.compareTo(BigDecimal.valueOf(absQty)) < 0) {
                 phase1.add(SyncResultDTO.fail(i,
-                        "库存不足，批次模拟库存：" + current + "，需要：" + absQty));
+                        "库存不足，批次模拟库存：" + current.toPlainString() + "，需要：" + absQty));
                 hasError = true;
             } else {
-                phase1.add(null); // 占位，阶段二替换
-                simQty.put(key, current + (isOut ? -absQty : absQty));
+                phase1.add(null);
+                BigDecimal delta = BigDecimal.valueOf(isOut ? -absQty : absQty);
+                simQty.put(key, current.add(delta));
             }
         }
         if (hasError) {
-            // 整批拒绝：有具体原因的保留，其余标记为批次整体拒绝
             for (int i = 0; i < phase1.size(); i++) {
                 if (phase1.get(i) == null) {
                     phase1.set(i, SyncResultDTO.fail(i, "批次内存在库存不足，整批已拒绝"));
@@ -72,36 +67,22 @@ public class SyncServiceImpl implements SyncService {
             return phase1;
         }
 
-        // Phase 2: 全批执行（任何步骤失败均抛异常，触发整个事务回滚）
+        // Phase 2: 全批执行 — 只追加流水 + 更新 snapshot，不直接修改 inventory
         List<SyncResultDTO> results = new ArrayList<>();
         for (int i = 0; i < items.size(); i++) {
             SyncItemDTO item = items.get(i);
             int absQty = Math.abs(item.getQty());
             boolean isOut = "OUT".equals(item.getType()) || item.getQty() < 0;
+            int delta = isOut ? -absQty : absQty;
 
-            // selectForUpdate：锁定行，并且在同一事务内能读到本次已提交的最新值
-            Inventory inv = inventoryMapper.selectForUpdate(item.getWarehouseId(), item.getProductId());
-            int beforeQty = inv != null ? inv.getQty() : 0;
+            StockSnapshot snap = stockSnapshotMapper.selectOne(item.getProductId(), item.getWarehouseId());
+            BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
 
-            if (isOut && beforeQty < absQty) {
-                // 两阶段之间库存被并发修改，整批回滚
+            if (isOut && beforeQty.compareTo(BigDecimal.valueOf(absQty)) < 0) {
                 throw new BusinessException("库存在校验期间被并发修改，请稍后重试");
             }
 
-            int delta = isOut ? -absQty : absQty;
-            if (inv == null) {
-                Inventory newInv = new Inventory();
-                newInv.setWarehouseId(item.getWarehouseId());
-                newInv.setProductId(item.getProductId());
-                newInv.setQty(absQty);
-                newInv.setAlertQty(0);
-                inventoryMapper.insert(newInv);
-            } else {
-                inv.setQty(beforeQty + delta);
-                if (inventoryMapper.updateById(inv) == 0)
-                    throw new BusinessException("库存并发冲突，请稍后重试");
-            }
-
+            // 追加流水（核心：只增不改）
             InventoryLedger ledger = new InventoryLedger();
             ledger.setId(UUID.randomUUID().toString());
             ledger.setProductId(item.getProductId());
@@ -115,11 +96,12 @@ public class SyncServiceImpl implements SyncService {
             ledger.setCreatedAt(LocalDateTime.now());
             inventoryLedgerMapper.insert(ledger);
 
-            int newQty = beforeQty + delta;
+            // 更新快照缓存
+            BigDecimal newQty = beforeQty.add(BigDecimal.valueOf(delta));
             stockSnapshotMapper.upsert(
                 item.getProductId(), item.getWarehouseId(),
-                BigDecimal.valueOf(newQty),
-                inv != null && inv.getAlertQty() != null ? inv.getAlertQty() : 0
+                newQty,
+                snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0
             );
 
             results.add(SyncResultDTO.ok(i));

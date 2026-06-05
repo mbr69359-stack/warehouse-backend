@@ -11,10 +11,13 @@ public class Product {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String name;
+    private String uuid;
     private String skuCode;
     private Long categoryId;
     private String unit;
     private BigDecimal price;
+    private String spec;
+    private String barcode;
     private String image;
     private String remark;
     private Integer status;
