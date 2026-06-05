@@ -11,4 +11,9 @@ public class CustomerReturnItem {
     private Long returnId;
     private Long productId;
     private Integer qty;
+
+    @TableField(exist = false)
+    private String productName;
+    @TableField(exist = false)
+    private String skuCode;
 }

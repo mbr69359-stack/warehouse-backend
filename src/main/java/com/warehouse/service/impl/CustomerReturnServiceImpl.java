@@ -1,6 +1,5 @@
 package com.warehouse.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.dto.CustomerReturnDTO;
 import com.warehouse.entity.*;
@@ -34,16 +33,18 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
 
     @Override
     @Transactional
-    public Long create(CustomerReturnDTO dto, String createdBy) {
+    public Long create(CustomerReturnDTO dto, String createdBy, Long operatorId) {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         String exchangeNo = "CR" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
                 + String.format("%03d", ThreadLocalRandom.current().nextInt(1000));
 
         OutOrder outOrder = new OutOrder();
         outOrder.setOrderNo(exchangeNo);
+        outOrder.setExchangeNo(exchangeNo);
         outOrder.setWarehouseId(dto.getWarehouseId());
         outOrder.setType("REPLACEMENT_OUT");
         outOrder.setStatus("DRAFT");
+        outOrder.setOperatorId(operatorId);
         outOrder.setRemark(dto.getRemark());
         outOrderMapper.insert(outOrder);
 
@@ -90,8 +91,6 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
 
     @Override
     public List<CustomerReturnItem> listItems(Long returnId) {
-        return customerReturnItemMapper.selectList(
-                new LambdaQueryWrapper<CustomerReturnItem>()
-                        .eq(CustomerReturnItem::getReturnId, returnId));
+        return customerReturnItemMapper.selectItemsWithProduct(returnId);
     }
 }

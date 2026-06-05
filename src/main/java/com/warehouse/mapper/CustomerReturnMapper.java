@@ -11,9 +11,13 @@ import org.apache.ibatis.annotations.Select;
 public interface CustomerReturnMapper extends BaseMapper<CustomerReturn> {
 
     @Select("<script>" +
-            "SELECT * FROM customer_return WHERE 1=1 " +
-            "<if test='warehouseId != null'>AND warehouse_id = #{warehouseId} </if>" +
-            "ORDER BY created_at DESC" +
+            "SELECT cr.*, w.name AS warehouse_name, oo.order_no AS out_order_no " +
+            "FROM customer_return cr " +
+            "LEFT JOIN warehouse w ON w.id = cr.warehouse_id " +
+            "LEFT JOIN out_order oo ON oo.id = cr.out_order_id " +
+            "WHERE 1=1 " +
+            "<if test='warehouseId != null'>AND cr.warehouse_id = #{warehouseId} </if>" +
+            "ORDER BY cr.created_at DESC" +
             "</script>")
     Page<CustomerReturn> selectPage(Page<CustomerReturn> page, @Param("warehouseId") Long warehouseId);
 }

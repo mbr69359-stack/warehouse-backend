@@ -16,4 +16,9 @@ public class CustomerReturn {
     private LocalDateTime createdAt;
     private String createdBy;
     private Long outOrderId;
+
+    @TableField(exist = false)
+    private String warehouseName;
+    @TableField(exist = false)
+    private String outOrderNo;
 }

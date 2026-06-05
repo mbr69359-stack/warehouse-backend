@@ -1,6 +1,7 @@
 package com.warehouse.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.OutOrderDTO;
@@ -58,6 +59,11 @@ public class OutOrderServiceImpl implements OutOrderService {
                 && dto.getDamageRecordIds() != null
                 && !dto.getDamageRecordIds().isEmpty()) {
             List<DamageRecord> damages = damageRecordMapper.selectBatchIds(dto.getDamageRecordIds());
+            for (DamageRecord d : damages) {
+                if (!dto.getWarehouseId().equals(d.getWarehouseId())) {
+                    throw new BusinessException("损坏记录 " + d.getId() + " 不属于所选仓库，无法操作");
+                }
+            }
             Map<Long, Integer> merged = new LinkedHashMap<>();
             for (DamageRecord d : damages) {
                 merged.merge(d.getProductId(), d.getQty(), Integer::sum);
@@ -185,7 +191,7 @@ public class OutOrderServiceImpl implements OutOrderService {
         }
 
         order.setStatus("CONFIRMED");
-        order.setConfirmTime(LocalDateTime.now());
+        order.setConfirmTime(LocalDateTime.now(ZoneOffset.UTC));
         outOrderMapper.updateById(order);
     }
 
@@ -258,22 +264,17 @@ public class OutOrderServiceImpl implements OutOrderService {
             }
 
             if ("DAMAGE_OUT".equals(order.getType())) {
-                List<DamageRecord> damages = damageRecordMapper.selectList(
-                        new LambdaQueryWrapper<DamageRecord>().eq(DamageRecord::getOutOrderId, orderId));
-                for (DamageRecord d : damages) {
-                    d.setStatus("PENDING");
-                    d.setResolvedAt(null);
-                    d.setOutOrderId(null);
-                    damageRecordMapper.updateById(d);
-                }
+                UpdateWrapper<DamageRecord> uw = new UpdateWrapper<>();
+                uw.eq("out_order_id", orderId)
+                  .set("status", "PENDING")
+                  .set("resolved_at", null)
+                  .set("out_order_id", null);
+                damageRecordMapper.update(null, uw);
             }
         } else if ("DAMAGE_OUT".equals(order.getType())) {
-            List<DamageRecord> damages = damageRecordMapper.selectList(
-                    new LambdaQueryWrapper<DamageRecord>().eq(DamageRecord::getOutOrderId, orderId));
-            for (DamageRecord d : damages) {
-                d.setOutOrderId(null);
-                damageRecordMapper.updateById(d);
-            }
+            UpdateWrapper<DamageRecord> uw = new UpdateWrapper<>();
+            uw.eq("out_order_id", orderId).set("out_order_id", null);
+            damageRecordMapper.update(null, uw);
         }
 
         outOrderItemMapper.delete(new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));

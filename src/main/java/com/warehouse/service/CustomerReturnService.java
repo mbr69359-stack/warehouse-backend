@@ -8,6 +8,6 @@ import java.util.List;
 
 public interface CustomerReturnService {
     Page<CustomerReturn> page(int current, int size, Long warehouseId);
-    Long create(CustomerReturnDTO dto, String createdBy);
+    Long create(CustomerReturnDTO dto, String createdBy, Long operatorId);
     List<CustomerReturnItem> listItems(Long returnId);
 }

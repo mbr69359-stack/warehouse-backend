@@ -36,8 +36,8 @@ public class CustomerReturnController {
     @PreAuthorize("isAuthenticated()")
     public Result<Long> create(@RequestBody @Validated CustomerReturnDTO dto,
                                @AuthenticationPrincipal UserDetails user) {
-        String username = ((JwtUserDetails) user).getUsername();
-        return Result.success(customerReturnService.create(dto, username));
+        JwtUserDetails jwtUser = (JwtUserDetails) user;
+        return Result.success(customerReturnService.create(dto, jwtUser.getUsername(), jwtUser.getUserId()));
     }
 
     @GetMapping("/{id}/items")
