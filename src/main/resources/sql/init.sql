@@ -281,6 +281,8 @@ ON DUPLICATE KEY UPDATE qty=VALUES(qty), alert_qty=VALUES(alert_qty);
 -- =============================================
 ALTER TABLE out_order_item ADD COLUMN IF NOT EXISTS actual_qty INT NOT NULL DEFAULT 0;
 ALTER TABLE inventory ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 0;
+ALTER TABLE product ADD COLUMN IF NOT EXISTS spec    VARCHAR(500) NULL;
+ALTER TABLE product ADD COLUMN IF NOT EXISTS barcode VARCHAR(100) NULL;
 
 -- =============================================
 -- 性能索引（幂等，每次启动自动执行）

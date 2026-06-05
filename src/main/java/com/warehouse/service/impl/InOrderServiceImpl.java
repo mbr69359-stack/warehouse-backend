@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
@@ -100,7 +101,7 @@ public class InOrderServiceImpl implements InOrderService {
             entry.setType("inbound");
             entry.setDocumentNo(order.getOrderNo());
             entry.setOperator(String.valueOf(operatorId));
-            entry.setOccurredAt(LocalDateTime.now());
+            entry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
             entry.setSynced(1);
             ledgerMapper.insert(entry);
 
@@ -151,7 +152,7 @@ public class InOrderServiceImpl implements InOrderService {
                 entry.setDocumentNo(order.getOrderNo());
                 entry.setOperator("system");
                 entry.setNote("撤销入库单 " + order.getOrderNo());
-                entry.setOccurredAt(LocalDateTime.now());
+                entry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
                 entry.setSynced(1);
                 ledgerMapper.insert(entry);
 

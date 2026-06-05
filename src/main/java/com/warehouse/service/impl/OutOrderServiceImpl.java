@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
@@ -110,7 +111,7 @@ public class OutOrderServiceImpl implements OutOrderService {
             outEntry.setType("TRANSFER".equals(order.getType()) ? "transfer" : "outbound");
             outEntry.setDocumentNo(order.getOrderNo());
             outEntry.setOperator(String.valueOf(operatorId));
-            outEntry.setOccurredAt(LocalDateTime.now());
+            outEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
             outEntry.setSynced(1);
             ledgerMapper.insert(outEntry);
 
@@ -133,7 +134,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                 inEntry.setDocumentNo(order.getOrderNo());
                 inEntry.setOperator(String.valueOf(operatorId));
                 inEntry.setNote("调拨自仓库 " + order.getWarehouseId());
-                inEntry.setOccurredAt(LocalDateTime.now());
+                inEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
                 inEntry.setSynced(1);
                 ledgerMapper.insert(inEntry);
 
@@ -181,7 +182,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                 cancelEntry.setDocumentNo(order.getOrderNo());
                 cancelEntry.setOperator("system");
                 cancelEntry.setNote("撤销出库单 " + order.getOrderNo());
-                cancelEntry.setOccurredAt(LocalDateTime.now());
+                cancelEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
                 cancelEntry.setSynced(1);
                 ledgerMapper.insert(cancelEntry);
 
@@ -208,7 +209,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                     transferCancelEntry.setDocumentNo(order.getOrderNo());
                     transferCancelEntry.setOperator("system");
                     transferCancelEntry.setNote("撤销调拨，还原至仓库 " + order.getWarehouseId());
-                    transferCancelEntry.setOccurredAt(LocalDateTime.now());
+                    transferCancelEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
                     transferCancelEntry.setSynced(1);
                     ledgerMapper.insert(transferCancelEntry);
 

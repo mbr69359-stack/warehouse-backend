@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -67,9 +68,9 @@ public class InventoryServiceImpl implements InventoryService {
                     ledger.setType("adjust");
                     ledger.setOperator("");
                     ledger.setNote(dto.getRemark());
-                    ledger.setOccurredAt(LocalDateTime.now());
+                    ledger.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
                     ledger.setSynced(1);
-                    ledger.setCreatedAt(LocalDateTime.now());
+                    ledger.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
                     inventoryLedgerMapper.insert(ledger);
                 }
                 stockSnapshotMapper.upsert(
