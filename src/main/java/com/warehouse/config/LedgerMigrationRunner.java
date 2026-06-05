@@ -27,6 +27,8 @@ public class LedgerMigrationRunner implements CommandLineRunner {
         ensureTables();
         ensureProductUuid();
         ensureProductSpecBarcode();
+        ensureDamageTables();
+        ensureOutOrderExchangeNo();
         migrateOpeningBalances();
         rebuildSnapshot();
         syncInventoryFromLedger();
@@ -95,6 +97,49 @@ public class LedgerMigrationRunner implements CommandLineRunner {
     private void ensureProductSpecBarcode() {
         addColumnIfMissing("product", "spec", "ALTER TABLE product ADD COLUMN spec VARCHAR(500) NULL");
         addColumnIfMissing("product", "barcode", "ALTER TABLE product ADD COLUMN barcode VARCHAR(100) NULL");
+    }
+
+    private void ensureDamageTables() {
+        jdbc.execute(
+            "CREATE TABLE IF NOT EXISTS damage_record (" +
+            "  id           BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+            "  warehouse_id BIGINT        NOT NULL," +
+            "  product_id   BIGINT        NOT NULL," +
+            "  qty          INT           NOT NULL," +
+            "  status       VARCHAR(20)   NOT NULL DEFAULT 'PENDING'," +
+            "  remark       VARCHAR(500)  NULL," +
+            "  created_at   DATETIME      NOT NULL DEFAULT (UTC_TIMESTAMP())," +
+            "  created_by   VARCHAR(100)  NOT NULL DEFAULT ''," +
+            "  resolved_at  DATETIME      NULL," +
+            "  out_order_id BIGINT        NULL" +
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+        jdbc.execute(
+            "CREATE TABLE IF NOT EXISTS customer_return (" +
+            "  id           BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+            "  exchange_no  VARCHAR(50)   NOT NULL," +
+            "  warehouse_id BIGINT        NOT NULL," +
+            "  status       VARCHAR(20)   NOT NULL DEFAULT 'DRAFT'," +
+            "  remark       VARCHAR(500)  NULL," +
+            "  created_at   DATETIME      NOT NULL DEFAULT (UTC_TIMESTAMP())," +
+            "  created_by   VARCHAR(100)  NOT NULL DEFAULT ''," +
+            "  out_order_id BIGINT        NULL" +
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+        jdbc.execute(
+            "CREATE TABLE IF NOT EXISTS customer_return_item (" +
+            "  id        BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+            "  return_id BIGINT NOT NULL," +
+            "  product_id BIGINT NOT NULL," +
+            "  qty       INT    NOT NULL" +
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+        log.info("[LedgerMigration] 损坏/退换货表检查完毕");
+    }
+
+    private void ensureOutOrderExchangeNo() {
+        addColumnIfMissing("out_order", "exchange_no",
+            "ALTER TABLE out_order ADD COLUMN exchange_no VARCHAR(50) NULL");
     }
 
     private void addColumnIfMissing(String table, String column, String alterSql) {

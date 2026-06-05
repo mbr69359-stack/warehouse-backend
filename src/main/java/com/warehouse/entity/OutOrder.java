@@ -21,4 +21,5 @@ public class OutOrder {
     private LocalDateTime createTime;
     private LocalDateTime confirmTime;
     private Long targetWarehouseId;
+    private String exchangeNo;
 }

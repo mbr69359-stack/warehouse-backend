@@ -15,7 +15,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -28,6 +30,7 @@ public class OutOrderServiceImpl implements OutOrderService {
     private final InventoryLedgerMapper ledgerMapper;
     private final StockSnapshotMapper snapshotMapper;
     private final WarehouseMapper warehouseMapper;
+    private final DamageRecordMapper damageRecordMapper;
 
     @Override
     public Page<OutOrder> page(int current, int size, String status, Long warehouseId) {
@@ -50,7 +53,31 @@ public class OutOrderServiceImpl implements OutOrderService {
         order.setRemark(dto.getRemark());
         order.setTargetWarehouseId(dto.getTargetWarehouseId());
         outOrderMapper.insert(order);
-        if (dto.getItems() != null) {
+
+        if ("DAMAGE_OUT".equals(dto.getType())
+                && dto.getDamageRecordIds() != null
+                && !dto.getDamageRecordIds().isEmpty()) {
+            List<DamageRecord> damages = damageRecordMapper.selectBatchIds(dto.getDamageRecordIds());
+            Map<Long, Integer> merged = new LinkedHashMap<>();
+            for (DamageRecord d : damages) {
+                merged.merge(d.getProductId(), d.getQty(), Integer::sum);
+            }
+            for (Map.Entry<Long, Integer> entry : merged.entrySet()) {
+                OutOrderItem item = new OutOrderItem();
+                item.setOrderId(order.getId());
+                item.setProductId(entry.getKey());
+                item.setQty(entry.getValue());
+                item.setPrice(BigDecimal.ZERO);
+                outOrderItemMapper.insert(item);
+            }
+            for (DamageRecord d : damages) {
+                d.setOutOrderId(order.getId());
+                damageRecordMapper.updateById(d);
+            }
+        } else {
+            if (dto.getItems() == null || dto.getItems().isEmpty()) {
+                throw new BusinessException("出库明细不能为空");
+            }
             for (OutOrderDTO.Item i : dto.getItems()) {
                 OutOrderItem item = new OutOrderItem();
                 item.setOrderId(order.getId());
@@ -89,11 +116,16 @@ public class OutOrderServiceImpl implements OutOrderService {
             }
         }
 
+        String ledgerType;
+        if ("TRANSFER".equals(order.getType())) ledgerType = "transfer";
+        else if ("DAMAGE_OUT".equals(order.getType())) ledgerType = "damage_out";
+        else if ("REPLACEMENT_OUT".equals(order.getType())) ledgerType = "replacement_out";
+        else ledgerType = "outbound";
+
         for (OutOrderItem item : items) {
             int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
 
-            // 来源仓库库存
             StockSnapshot snap = snapshotMapper.selectOne(item.getProductId(), order.getWarehouseId());
             BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
             if (beforeQty.compareTo(BigDecimal.valueOf(qty)) < 0) {
@@ -102,13 +134,12 @@ public class OutOrderServiceImpl implements OutOrderService {
             }
             BigDecimal afterQty = beforeQty.subtract(BigDecimal.valueOf(qty));
 
-            // 来源仓库：追加出库流水
             InventoryLedger outEntry = new InventoryLedger();
             outEntry.setId(UUID.randomUUID().toString());
             outEntry.setProductId(item.getProductId());
             outEntry.setLocationId(order.getWarehouseId());
             outEntry.setChangeQty(new BigDecimal(-qty));
-            outEntry.setType("TRANSFER".equals(order.getType()) ? "transfer" : "outbound");
+            outEntry.setType(ledgerType);
             outEntry.setDocumentNo(order.getOrderNo());
             outEntry.setOperator(String.valueOf(operatorId));
             outEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
@@ -118,13 +149,11 @@ public class OutOrderServiceImpl implements OutOrderService {
             snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
                     afterQty, snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0);
 
-            // 调拨出库：同步增加目标仓库
             if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
                 StockSnapshot targetSnap = snapshotMapper.selectOne(item.getProductId(), order.getTargetWarehouseId());
                 BigDecimal targetBefore = targetSnap != null ? targetSnap.getCurrentQty() : BigDecimal.ZERO;
                 BigDecimal targetAfter = targetBefore.add(BigDecimal.valueOf(qty));
 
-                // 目标仓库：追加调拨入库流水
                 InventoryLedger inEntry = new InventoryLedger();
                 inEntry.setId(UUID.randomUUID().toString());
                 inEntry.setProductId(item.getProductId());
@@ -141,6 +170,17 @@ public class OutOrderServiceImpl implements OutOrderService {
                 snapshotMapper.upsert(item.getProductId(), order.getTargetWarehouseId(),
                         targetAfter,
                         targetSnap != null && targetSnap.getAlertQty() != null ? targetSnap.getAlertQty() : 0);
+            }
+        }
+
+        if ("DAMAGE_OUT".equals(order.getType())) {
+            LocalDateTime resolvedAt = LocalDateTime.now(ZoneOffset.UTC);
+            List<DamageRecord> damages = damageRecordMapper.selectList(
+                    new LambdaQueryWrapper<DamageRecord>().eq(DamageRecord::getOutOrderId, orderId));
+            for (DamageRecord d : damages) {
+                d.setStatus("RESOLVED");
+                d.setResolvedAt(resolvedAt);
+                damageRecordMapper.updateById(d);
             }
         }
 
@@ -168,7 +208,6 @@ public class OutOrderServiceImpl implements OutOrderService {
                 int restoreQty = (item.getActualQty() != null) ? item.getActualQty() : 0;
                 if (restoreQty <= 0) continue;
 
-                // 来源仓库：恢复库存
                 StockSnapshot srcSnap = snapshotMapper.selectOne(item.getProductId(), order.getWarehouseId());
                 BigDecimal srcBefore = srcSnap != null ? srcSnap.getCurrentQty() : BigDecimal.ZERO;
                 BigDecimal srcAfter  = srcBefore.add(BigDecimal.valueOf(restoreQty));
@@ -190,7 +229,6 @@ public class OutOrderServiceImpl implements OutOrderService {
                         srcAfter,
                         srcSnap != null && srcSnap.getAlertQty() != null ? srcSnap.getAlertQty() : 0);
 
-                // 调拨撤销：目标仓库回扣
                 if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
                     StockSnapshot tgtSnap = snapshotMapper.selectOne(item.getProductId(), order.getTargetWarehouseId());
                     BigDecimal tgtBefore = tgtSnap != null ? tgtSnap.getCurrentQty() : BigDecimal.ZERO;
@@ -217,6 +255,24 @@ public class OutOrderServiceImpl implements OutOrderService {
                             tgtAfter,
                             tgtSnap != null && tgtSnap.getAlertQty() != null ? tgtSnap.getAlertQty() : 0);
                 }
+            }
+
+            if ("DAMAGE_OUT".equals(order.getType())) {
+                List<DamageRecord> damages = damageRecordMapper.selectList(
+                        new LambdaQueryWrapper<DamageRecord>().eq(DamageRecord::getOutOrderId, orderId));
+                for (DamageRecord d : damages) {
+                    d.setStatus("PENDING");
+                    d.setResolvedAt(null);
+                    d.setOutOrderId(null);
+                    damageRecordMapper.updateById(d);
+                }
+            }
+        } else if ("DAMAGE_OUT".equals(order.getType())) {
+            List<DamageRecord> damages = damageRecordMapper.selectList(
+                    new LambdaQueryWrapper<DamageRecord>().eq(DamageRecord::getOutOrderId, orderId));
+            for (DamageRecord d : damages) {
+                d.setOutOrderId(null);
+                damageRecordMapper.updateById(d);
             }
         }
 

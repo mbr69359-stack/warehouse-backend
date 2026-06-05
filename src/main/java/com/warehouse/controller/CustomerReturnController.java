@@ -1,0 +1,47 @@
+package com.warehouse.controller;
+
+import com.warehouse.common.PageResult;
+import com.warehouse.common.Result;
+import com.warehouse.config.JwtUserDetails;
+import com.warehouse.dto.CustomerReturnDTO;
+import com.warehouse.entity.CustomerReturn;
+import com.warehouse.entity.CustomerReturnItem;
+import com.warehouse.service.CustomerReturnService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@Validated
+@RestController
+@RequestMapping("/customer-returns")
+@RequiredArgsConstructor
+public class CustomerReturnController {
+
+    private final CustomerReturnService customerReturnService;
+
+    @GetMapping
+    public Result<PageResult<CustomerReturn>> page(
+            @RequestParam(defaultValue = "1") int current,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Long warehouseId) {
+        return Result.success(PageResult.of(customerReturnService.page(current, size, warehouseId)));
+    }
+
+    @PostMapping
+    @PreAuthorize("isAuthenticated()")
+    public Result<Long> create(@RequestBody @Validated CustomerReturnDTO dto,
+                               @AuthenticationPrincipal UserDetails user) {
+        String username = ((JwtUserDetails) user).getUsername();
+        return Result.success(customerReturnService.create(dto, username));
+    }
+
+    @GetMapping("/{id}/items")
+    public Result<List<CustomerReturnItem>> items(@PathVariable Long id) {
+        return Result.success(customerReturnService.listItems(id));
+    }
+}
