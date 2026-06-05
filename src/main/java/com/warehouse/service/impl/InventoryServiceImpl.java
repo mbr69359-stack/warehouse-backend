@@ -1,6 +1,6 @@
 package com.warehouse.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.dto.InventoryCheckDTO;
 import com.warehouse.entity.Inventory;
@@ -34,18 +34,12 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public Page<Inventory> page(int current, int size, Long warehouseId, Long productId, LocalDateTime updatedAfter) {
-        LambdaQueryWrapper<Inventory> q = new LambdaQueryWrapper<Inventory>()
-                .eq(warehouseId != null, Inventory::getWarehouseId, warehouseId)
-                .eq(productId != null, Inventory::getProductId, productId)
-                .gt(updatedAfter != null, Inventory::getUpdateTime, updatedAfter);
-        return inventoryMapper.selectPage(new Page<>(current, size), q);
+        return inventoryMapper.selectPageFromSnapshot(new Page<>(current, size), warehouseId, productId, updatedAfter);
     }
 
     @Override
     public List<Inventory> listAlerts() {
-        return inventoryMapper.selectList(new LambdaQueryWrapper<Inventory>()
-                .gt(Inventory::getAlertQty, 0)
-                .apply("qty < alert_qty"));
+        return inventoryMapper.selectAlertsFromSnapshot();
     }
 
     @Override
@@ -93,13 +87,13 @@ public class InventoryServiceImpl implements InventoryService {
     public void setAlertQty(Long warehouseId, Long productId, Integer alertQty) {
         if (alertQty == null || alertQty < 0) throw new BusinessException("预警数量不能为负数");
         try {
-            Inventory inv = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
-                    .eq(Inventory::getWarehouseId, warehouseId)
-                    .eq(Inventory::getProductId, productId));
-            if (inv == null) throw new BusinessException("库存记录不存在，请先入库");
-            inv.setAlertQty(alertQty);
-            inventoryMapper.updateById(inv);
+            StockSnapshot snap = stockSnapshotMapper.selectOne(productId, warehouseId);
+            if (snap == null) throw new BusinessException("库存记录不存在，请先入库");
             stockSnapshotMapper.updateAlertQty(productId, warehouseId, alertQty);
+            inventoryMapper.update(null, new LambdaUpdateWrapper<Inventory>()
+                    .eq(Inventory::getWarehouseId, warehouseId)
+                    .eq(Inventory::getProductId, productId)
+                    .set(Inventory::getAlertQty, alertQty));
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -110,9 +104,9 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     public InventoryStatsVO getStats() {
         InventoryStatsVO result = new InventoryStatsVO();
-        Long total = inventoryMapper.selectTotalQty();
+        Long total = inventoryMapper.selectTotalQtyFromSnapshot();
         result.setTotalQty(total != null ? total : 0L);
-        InventoryStatsVO maxW = inventoryMapper.selectMaxWarehouse();
+        InventoryStatsVO maxW = inventoryMapper.selectMaxWarehouseFromSnapshot();
         if (maxW != null) {
             result.setMaxWarehouseName(maxW.getMaxWarehouseName());
             result.setMaxWarehouseQty(maxW.getMaxWarehouseQty());
@@ -125,9 +119,9 @@ public class InventoryServiceImpl implements InventoryService {
     public List<InventoryChartItemVO> getChartData(String type, Long warehouseId) {
         List<InventoryChartItemVO> items;
         if ("warehouse".equals(type) && warehouseId != null) {
-            items = inventoryMapper.selectChartByWarehouse(warehouseId);
+            items = inventoryMapper.selectChartByWarehouseFromSnapshot(warehouseId);
         } else {
-            items = inventoryMapper.selectChartAll();
+            items = inventoryMapper.selectChartAllFromSnapshot();
         }
         items.forEach(item -> item.setIsLow(
             item.getAlertQty() != null && item.getAlertQty() > 0 &&
