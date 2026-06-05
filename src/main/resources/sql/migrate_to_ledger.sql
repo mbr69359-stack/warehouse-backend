@@ -5,7 +5,16 @@
 -- =============================================================
 
 -- Step 1: 建新表（幂等，与 init.sql 一致）
-ALTER TABLE product ADD COLUMN IF NOT EXISTS uuid CHAR(36) NOT NULL DEFAULT '';
+SET @col_exists = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'product'
+      AND COLUMN_NAME = 'uuid'
+);
+SET @sql_add_col = IF(@col_exists = 0,
+    "ALTER TABLE product ADD COLUMN uuid CHAR(36) NOT NULL DEFAULT ''",
+    "SELECT 'uuid column already exists' AS info");
+PREPARE stmt FROM @sql_add_col; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 UPDATE product SET uuid = UUID() WHERE uuid = '';
 
 -- 补全可能遗漏的唯一索引
@@ -35,9 +44,17 @@ CREATE TABLE IF NOT EXISTS inventory_ledger (
     created_at  DATETIME       NOT NULL DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE INDEX IF NOT EXISTS idx_ledger_prod_loc_time ON inventory_ledger(product_id, location_id, occurred_at);
-CREATE INDEX IF NOT EXISTS idx_ledger_document_no   ON inventory_ledger(document_no);
-CREATE INDEX IF NOT EXISTS idx_ledger_type          ON inventory_ledger(type, occurred_at);
+SET @i1 = (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='inventory_ledger' AND INDEX_NAME='idx_ledger_prod_loc_time');
+SET @s1 = IF(@i1=0,'CREATE INDEX idx_ledger_prod_loc_time ON inventory_ledger(product_id,location_id,occurred_at)',"SELECT 'idx_ledger_prod_loc_time exists'");
+PREPARE s FROM @s1; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @i2 = (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='inventory_ledger' AND INDEX_NAME='idx_ledger_document_no');
+SET @s2 = IF(@i2=0,'CREATE INDEX idx_ledger_document_no ON inventory_ledger(document_no)',"SELECT 'idx_ledger_document_no exists'");
+PREPARE s FROM @s2; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @i3 = (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='inventory_ledger' AND INDEX_NAME='idx_ledger_type');
+SET @s3 = IF(@i3=0,'CREATE INDEX idx_ledger_type ON inventory_ledger(type,occurred_at)',"SELECT 'idx_ledger_type exists'");
+PREPARE s FROM @s3; EXECUTE s; DEALLOCATE PREPARE s;
 
 CREATE TABLE IF NOT EXISTS stock_snapshot (
     product_id  BIGINT         NOT NULL,
@@ -87,22 +104,22 @@ ON DUPLICATE KEY UPDATE
 
 -- Step 4: 校验报告（迁移前 qty vs 迁移后 snapshot current_qty）
 SELECT
-    p.name                                                              AS 商品名称,
-    p.sku_code                                                          AS SKU,
-    w.name                                                              AS 仓库,
-    i.qty                                                               AS 迁移前qty,
-    s.current_qty                                                       AS 迁移后snapshot,
-    IF(i.qty = s.current_qty, '✓ 一致', CONCAT('✗ 差值=', i.qty - s.current_qty)) AS 校验结果
+    p.name                                                              AS product_name,
+    p.sku_code                                                          AS sku,
+    w.name                                                              AS warehouse,
+    i.qty                                                               AS before_qty,
+    s.current_qty                                                       AS snapshot_qty,
+    IF(i.qty = s.current_qty, 'OK', CONCAT('DIFF=', i.qty - s.current_qty)) AS check_result
 FROM inventory i
 JOIN product p       ON p.id = i.product_id
 JOIN warehouse w     ON w.id = i.warehouse_id
 LEFT JOIN stock_snapshot s ON s.product_id = i.product_id AND s.location_id = i.warehouse_id
-ORDER BY 校验结果 DESC, p.name;
+ORDER BY check_result DESC, p.name;
 
--- Step 5: 汇总行
+-- Step 5: summary
 SELECT
-    COUNT(*)                                                            AS 总记录数,
-    SUM(IF(i.qty = s.current_qty, 1, 0))                              AS 一致数量,
-    SUM(IF(i.qty != s.current_qty OR s.current_qty IS NULL, 1, 0))    AS 不一致数量
+    COUNT(*)                                                            AS total,
+    SUM(IF(i.qty = s.current_qty, 1, 0))                              AS matched,
+    SUM(IF(i.qty != s.current_qty OR s.current_qty IS NULL, 1, 0))    AS mismatched
 FROM inventory i
 LEFT JOIN stock_snapshot s ON s.product_id = i.product_id AND s.location_id = i.warehouse_id;

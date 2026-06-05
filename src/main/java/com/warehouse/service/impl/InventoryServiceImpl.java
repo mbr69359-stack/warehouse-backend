@@ -107,6 +107,7 @@ public class InventoryServiceImpl implements InventoryService {
             if (inv == null) throw new BusinessException("库存记录不存在，请先入库");
             inv.setAlertQty(alertQty);
             inventoryMapper.updateById(inv);
+            stockSnapshotMapper.updateAlertQty(productId, warehouseId, alertQty);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
