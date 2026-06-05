@@ -56,6 +56,10 @@ public interface StockSnapshotMapper {
     @Select("SELECT * FROM stock_snapshot ORDER BY product_id, location_id")
     List<StockSnapshot> selectAll();
 
+    /** 查某商品跨所有仓位的库存总量（用于删除前校验） */
+    @Select("SELECT COALESCE(SUM(current_qty), 0) FROM stock_snapshot WHERE product_id = #{productId}")
+    java.math.BigDecimal selectTotalQtyByProductId(@Param("productId") Long productId);
+
     /** 从 inventory 表同步 alert_qty 到快照（rebuildSnapshot 后调用） */
     @Update("UPDATE stock_snapshot s " +
             "JOIN inventory i ON i.product_id = s.product_id AND i.warehouse_id = s.location_id " +

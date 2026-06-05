@@ -56,10 +56,10 @@ public interface InventoryMapper extends BaseMapper<Inventory> {
 
     @Select("<script>" +
             "SELECT COUNT(*) AS totalSkus, " +
-            "IFNULL(SUM(qty), 0) AS totalQty, " +
-            "SUM(CASE WHEN alert_qty &gt; 0 AND qty &lt; alert_qty THEN 1 ELSE 0 END) AS alertCount " +
-            "FROM inventory" +
-            "<where><if test='warehouseId != null'>warehouse_id = #{warehouseId}</if></where>" +
+            "IFNULL(SUM(current_qty), 0) AS totalQty, " +
+            "SUM(CASE WHEN alert_qty &gt; 0 AND current_qty &lt; alert_qty THEN 1 ELSE 0 END) AS alertCount " +
+            "FROM stock_snapshot" +
+            "<where><if test='warehouseId != null'>location_id = #{warehouseId}</if></where>" +
             "</script>")
     Map<String, Object> selectInventorySummary(@Param("warehouseId") Long warehouseId);
 
