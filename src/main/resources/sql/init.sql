@@ -338,3 +338,43 @@ CREATE TABLE IF NOT EXISTS stock_snapshot (
     updated_at  DATETIME       NOT NULL,
     PRIMARY KEY (product_id, location_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- =============================================
+-- v5：期初流水迁移（幂等，每次启动自动执行）
+-- 把现有 inventory.qty 补写为 opening 流水，
+-- 使 inventory_ledger 成为库存唯一真相。
+-- =============================================
+
+-- 1. 将 inventory.qty 写入 opening 流水（每个商品+仓库仅一次）
+INSERT INTO inventory_ledger (id, product_id, location_id, change_qty, type, operator, note, occurred_at, synced, created_at)
+SELECT UUID(), i.product_id, i.warehouse_id,
+       i.qty - IFNULL(l.s, 0),
+       'opening', 'migration', '系统迁移期初库存',
+       UTC_TIMESTAMP(), 1, UTC_TIMESTAMP()
+FROM inventory i
+LEFT JOIN (
+    SELECT product_id, location_id, SUM(change_qty) AS s
+    FROM inventory_ledger
+    GROUP BY product_id, location_id
+) l ON i.product_id = l.product_id AND i.warehouse_id = l.location_id
+WHERE i.qty - IFNULL(l.s, 0) <> 0
+  AND NOT EXISTS (
+      SELECT 1 FROM inventory_ledger il2
+      WHERE il2.type = 'opening'
+        AND il2.product_id = i.product_id
+        AND il2.location_id = i.warehouse_id
+  );
+
+-- 2. 从流水重建快照（ON DUPLICATE KEY UPDATE 幂等）
+INSERT INTO stock_snapshot (product_id, location_id, current_qty, alert_qty, updated_at)
+SELECT product_id, location_id, SUM(change_qty), 0, UTC_TIMESTAMP()
+FROM inventory_ledger
+GROUP BY product_id, location_id
+ON DUPLICATE KEY UPDATE
+  current_qty = VALUES(current_qty),
+  updated_at  = UTC_TIMESTAMP();
+
+-- 3. 同步 alert_qty（以 inventory 表为准）
+UPDATE stock_snapshot s
+JOIN inventory i ON i.product_id = s.product_id AND i.warehouse_id = s.location_id
+SET s.alert_qty = i.alert_qty, s.updated_at = UTC_TIMESTAMP();

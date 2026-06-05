@@ -7,6 +7,7 @@ import com.warehouse.entity.Inventory;
 import com.warehouse.entity.InventoryLedger;
 import com.warehouse.mapper.InventoryLedgerMapper;
 import com.warehouse.mapper.InventoryMapper;
+import com.warehouse.entity.StockSnapshot;
 import com.warehouse.mapper.StockSnapshotMapper;
 import com.warehouse.common.BusinessException;
 import com.warehouse.service.InventoryService;
@@ -58,19 +59,10 @@ public class InventoryServiceImpl implements InventoryService {
         try {
             for (InventoryCheckDTO.CheckItem ci : dto.getItems()) {
                 int actualQty = ci.getActualQty() != null ? ci.getActualQty() : 0;
-                Inventory inv = inventoryMapper.selectForUpdate(warehouseId, ci.getProductId());
-                int beforeQty = 0;
-                if (inv == null) {
-                    inv = new Inventory();
-                    inv.setWarehouseId(warehouseId);
-                    inv.setProductId(ci.getProductId());
-                    inv.setQty(actualQty); inv.setAlertQty(0);
-                    inventoryMapper.insert(inv);
-                } else {
-                    beforeQty = inv.getQty();
-                    inv.setQty(actualQty);
-                    inventoryMapper.updateById(inv);
-                }
+                StockSnapshot snap = stockSnapshotMapper.selectOne(ci.getProductId(), warehouseId);
+                int beforeQty = snap != null && snap.getCurrentQty() != null
+                        ? snap.getCurrentQty().intValue() : 0;
+                int alertQty = snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0;
                 int delta = actualQty - beforeQty;
                 if (delta != 0) {
                     InventoryLedger ledger = new InventoryLedger();
@@ -89,7 +81,7 @@ public class InventoryServiceImpl implements InventoryService {
                 stockSnapshotMapper.upsert(
                     ci.getProductId(), warehouseId,
                     BigDecimal.valueOf(actualQty),
-                    inv.getAlertQty() != null ? inv.getAlertQty() : 0
+                    alertQty
                 );
             }
         } finally {
