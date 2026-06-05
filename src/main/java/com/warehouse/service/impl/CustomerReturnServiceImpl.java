@@ -27,6 +27,7 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
     private final CustomerReturnItemMapper customerReturnItemMapper;
     private final OutOrderMapper outOrderMapper;
     private final OutOrderItemMapper outOrderItemMapper;
+    private final DamageRecordMapper damageRecordMapper;
     private final OutOrderService outOrderService;
 
     @Override
@@ -51,6 +52,7 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
         outOrder.setRemark(dto.getRemark());
         outOrderMapper.insert(outOrder);
 
+        String operator = createdBy != null ? createdBy : "";
         List<ConfirmItemDTO> confirmItems = new ArrayList<>();
         for (CustomerReturnDTO.ItemDTO item : dto.getItems()) {
             OutOrderItem orderItem = new OutOrderItem();
@@ -64,11 +66,20 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
             c.setItemId(orderItem.getId());
             c.setActualQty(item.getQty());
             confirmItems.add(c);
+
+            DamageRecord damage = new DamageRecord();
+            damage.setWarehouseId(dto.getWarehouseId());
+            damage.setProductId(item.getProductId());
+            damage.setQty(item.getQty());
+            damage.setStatus("PENDING");
+            damage.setRemark(dto.getRemark());
+            damage.setCreatedAt(now);
+            damage.setCreatedBy(operator);
+            damageRecordMapper.insert(damage);
         }
 
         outOrderService.confirm(outOrder.getId(), confirmItems, operatorId);
 
-        String operator = createdBy != null ? createdBy : "";
         CustomerReturn customerReturn = new CustomerReturn();
         customerReturn.setExchangeNo(exchangeNo);
         customerReturn.setWarehouseId(dto.getWarehouseId());
