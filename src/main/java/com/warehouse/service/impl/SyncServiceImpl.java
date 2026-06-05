@@ -5,26 +5,31 @@ import com.warehouse.common.BusinessException;
 import com.warehouse.dto.SyncItemDTO;
 import com.warehouse.dto.SyncResultDTO;
 import com.warehouse.entity.Inventory;
-import com.warehouse.entity.InventoryLog;
-import com.warehouse.mapper.InventoryLogMapper;
+import com.warehouse.entity.InventoryLedger;
+import com.warehouse.mapper.InventoryLedgerMapper;
 import com.warehouse.mapper.InventoryMapper;
+import com.warehouse.mapper.StockSnapshotMapper;
 import com.warehouse.service.SyncService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class SyncServiceImpl implements SyncService {
 
     private final InventoryMapper inventoryMapper;
-    private final InventoryLogMapper inventoryLogMapper;
+    private final InventoryLedgerMapper inventoryLedgerMapper;
+    private final StockSnapshotMapper stockSnapshotMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -97,15 +102,25 @@ public class SyncServiceImpl implements SyncService {
                     throw new BusinessException("库存并发冲突，请稍后重试");
             }
 
-            InventoryLog log = new InventoryLog();
-            log.setWarehouseId(item.getWarehouseId());
-            log.setProductId(item.getProductId());
-            log.setChangeQty(delta);
-            log.setBeforeQty(beforeQty);
-            log.setAfterQty(beforeQty + delta);
-            log.setType(isOut ? "OUT" : "IN");
-            log.setRemark(item.getRemark());
-            inventoryLogMapper.insert(log);
+            InventoryLedger ledger = new InventoryLedger();
+            ledger.setId(UUID.randomUUID().toString());
+            ledger.setProductId(item.getProductId());
+            ledger.setLocationId(item.getWarehouseId());
+            ledger.setChangeQty(BigDecimal.valueOf(delta));
+            ledger.setType(isOut ? "outbound" : "inbound");
+            ledger.setOperator("");
+            ledger.setNote(item.getRemark());
+            ledger.setOccurredAt(item.getCreatedAt() != null ? item.getCreatedAt() : LocalDateTime.now());
+            ledger.setSynced(1);
+            ledger.setCreatedAt(LocalDateTime.now());
+            inventoryLedgerMapper.insert(ledger);
+
+            int newQty = beforeQty + delta;
+            stockSnapshotMapper.upsert(
+                item.getProductId(), item.getWarehouseId(),
+                BigDecimal.valueOf(newQty),
+                inv != null && inv.getAlertQty() != null ? inv.getAlertQty() : 0
+            );
 
             results.add(SyncResultDTO.ok(i));
         }

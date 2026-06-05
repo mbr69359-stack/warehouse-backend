@@ -4,9 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.dto.InventoryCheckDTO;
 import com.warehouse.entity.Inventory;
-import com.warehouse.entity.InventoryLog;
-import com.warehouse.mapper.InventoryLogMapper;
+import com.warehouse.entity.InventoryLedger;
+import com.warehouse.mapper.InventoryLedgerMapper;
 import com.warehouse.mapper.InventoryMapper;
+import com.warehouse.mapper.StockSnapshotMapper;
 import com.warehouse.common.BusinessException;
 import com.warehouse.service.InventoryService;
 import com.warehouse.vo.InventoryChartItemVO;
@@ -14,8 +15,10 @@ import com.warehouse.vo.InventoryStatsVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -25,7 +28,8 @@ public class InventoryServiceImpl implements InventoryService {
     private static final ConcurrentHashMap<Long, Boolean> CHECKING = new ConcurrentHashMap<>();
 
     private final InventoryMapper inventoryMapper;
-    private final InventoryLogMapper inventoryLogMapper;
+    private final InventoryLedgerMapper inventoryLedgerMapper;
+    private final StockSnapshotMapper stockSnapshotMapper;
 
     @Override
     public Page<Inventory> page(int current, int size, Long warehouseId, Long productId, LocalDateTime updatedAfter) {
@@ -67,13 +71,26 @@ public class InventoryServiceImpl implements InventoryService {
                     inv.setQty(actualQty);
                     inventoryMapper.updateById(inv);
                 }
-                InventoryLog log = new InventoryLog();
-                log.setWarehouseId(warehouseId);
-                log.setProductId(ci.getProductId());
-                log.setChangeQty(actualQty - beforeQty);
-                log.setBeforeQty(beforeQty); log.setAfterQty(actualQty);
-                log.setType("CHECK"); log.setRemark(dto.getRemark());
-                inventoryLogMapper.insert(log);
+                int delta = actualQty - beforeQty;
+                if (delta != 0) {
+                    InventoryLedger ledger = new InventoryLedger();
+                    ledger.setId(UUID.randomUUID().toString());
+                    ledger.setProductId(ci.getProductId());
+                    ledger.setLocationId(warehouseId);
+                    ledger.setChangeQty(BigDecimal.valueOf(delta));
+                    ledger.setType("adjust");
+                    ledger.setOperator("");
+                    ledger.setNote(dto.getRemark());
+                    ledger.setOccurredAt(LocalDateTime.now());
+                    ledger.setSynced(1);
+                    ledger.setCreatedAt(LocalDateTime.now());
+                    inventoryLedgerMapper.insert(ledger);
+                }
+                stockSnapshotMapper.upsert(
+                    ci.getProductId(), warehouseId,
+                    BigDecimal.valueOf(actualQty),
+                    inv.getAlertQty() != null ? inv.getAlertQty() : 0
+                );
             }
         } finally {
             CHECKING.remove(warehouseId);

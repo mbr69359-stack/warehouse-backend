@@ -55,4 +55,11 @@ public interface StockSnapshotMapper {
     /** 查全部快照（用于重算后校验） */
     @Select("SELECT * FROM stock_snapshot ORDER BY product_id, location_id")
     List<StockSnapshot> selectAll();
+
+    /** 从 inventory 表同步 alert_qty 到快照（rebuildSnapshot 后调用） */
+    @Update("UPDATE stock_snapshot s " +
+            "JOIN inventory i ON i.product_id = s.product_id AND i.warehouse_id = s.location_id " +
+            "SET s.alert_qty = i.alert_qty, s.updated_at = UTC_TIMESTAMP() " +
+            "WHERE s.alert_qty != i.alert_qty")
+    int syncAlertQtyFromInventory();
 }
