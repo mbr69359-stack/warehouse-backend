@@ -1,7 +1,8 @@
 package com.warehouse.service;
 
-import com.warehouse.mapper.InventoryLogMapper;
+import com.warehouse.mapper.InventoryLedgerMapper;
 import com.warehouse.mapper.InventoryMapper;
+import com.warehouse.mapper.StockSnapshotMapper;
 import com.warehouse.service.impl.InventoryServiceImpl;
 import com.warehouse.vo.InventoryChartItemVO;
 import com.warehouse.vo.InventoryStatsVO;
@@ -25,19 +26,22 @@ class InventoryServiceImplTest {
     private InventoryMapper inventoryMapper;
 
     @Mock
-    private InventoryLogMapper inventoryLogMapper;
+    private InventoryLedgerMapper inventoryLedgerMapper;
+
+    @Mock
+    private StockSnapshotMapper stockSnapshotMapper;
 
     @InjectMocks
     private InventoryServiceImpl service;
 
     @Test
     void getStats_returnsTotalAndMaxWarehouse() {
-        when(inventoryMapper.selectTotalQty()).thenReturn(500L);
+        when(inventoryMapper.selectTotalQtyFromSnapshot()).thenReturn(500L);
         InventoryStatsVO maxW = new InventoryStatsVO();
         maxW.setMaxWarehouseName("仓库A");
         maxW.setMaxWarehouseQty(200L);
         maxW.setMaxWarehouseId(3L);
-        when(inventoryMapper.selectMaxWarehouse()).thenReturn(maxW);
+        when(inventoryMapper.selectMaxWarehouseFromSnapshot()).thenReturn(maxW);
 
         InventoryStatsVO result = service.getStats();
 
@@ -49,8 +53,8 @@ class InventoryServiceImplTest {
 
     @Test
     void getStats_whenNoData_returnsTotalZero() {
-        when(inventoryMapper.selectTotalQty()).thenReturn(null);
-        when(inventoryMapper.selectMaxWarehouse()).thenReturn(null);
+        when(inventoryMapper.selectTotalQtyFromSnapshot()).thenReturn(null);
+        when(inventoryMapper.selectMaxWarehouseFromSnapshot()).thenReturn(null);
 
         InventoryStatsVO result = service.getStats();
 
@@ -68,7 +72,7 @@ class InventoryServiceImplTest {
         item2.setProductId(2L); item2.setProductName("耳机");
         item2.setQty(18); item2.setAlertQty(30);
 
-        when(inventoryMapper.selectChartAll()).thenReturn(Arrays.asList(item1, item2));
+        when(inventoryMapper.selectChartAllFromSnapshot()).thenReturn(Arrays.asList(item1, item2));
 
         List<InventoryChartItemVO> result = service.getChartData("all", null);
 
@@ -79,12 +83,12 @@ class InventoryServiceImplTest {
 
     @Test
     void getChartData_warehouse_callsWarehouseMapper() {
-        when(inventoryMapper.selectChartByWarehouse(3L))
+        when(inventoryMapper.selectChartByWarehouseFromSnapshot(3L))
                 .thenReturn(Collections.emptyList());
 
         service.getChartData("warehouse", 3L);
 
-        verify(inventoryMapper).selectChartByWarehouse(3L);
-        verify(inventoryMapper, never()).selectChartAll();
+        verify(inventoryMapper).selectChartByWarehouseFromSnapshot(3L);
+        verify(inventoryMapper, never()).selectChartAllFromSnapshot();
     }
 }
