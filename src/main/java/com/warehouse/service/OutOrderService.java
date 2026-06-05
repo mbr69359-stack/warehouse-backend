@@ -9,6 +9,7 @@ import java.util.List;
 
 public interface OutOrderService {
     Page<OutOrder> page(int current, int size, String status, Long warehouseId);
+    OutOrder getById(Long id);
     Long create(OutOrderDTO dto, Long operatorId);
     void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId);
     List<OutOrderItem> getItems(Long orderId);

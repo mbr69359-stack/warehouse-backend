@@ -12,10 +12,13 @@ import java.util.List;
 @Mapper
 public interface StockSnapshotMapper {
 
-    /** 行锁读取（与 inventory FOR UPDATE 配合使用，用于在同一事务内读最新快照） */
     @Select("SELECT * FROM stock_snapshot " +
             "WHERE product_id = #{productId} AND location_id = #{locationId}")
     StockSnapshot selectOne(@Param("productId") Long productId, @Param("locationId") Long locationId);
+
+    @Select("SELECT * FROM stock_snapshot " +
+            "WHERE product_id = #{productId} AND location_id = #{locationId} FOR UPDATE")
+    StockSnapshot selectOneForUpdate(@Param("productId") Long productId, @Param("locationId") Long locationId);
 
     /**
      * 追加流水后更新快照（绝对值 upsert）。

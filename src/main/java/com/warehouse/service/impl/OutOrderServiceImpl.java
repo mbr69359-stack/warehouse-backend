@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -32,6 +33,13 @@ public class OutOrderServiceImpl implements OutOrderService {
     private final StockSnapshotMapper snapshotMapper;
     private final WarehouseMapper warehouseMapper;
     private final DamageRecordMapper damageRecordMapper;
+
+    @Override
+    public OutOrder getById(Long id) {
+        OutOrder order = outOrderMapper.selectById(id);
+        if (order == null) throw new BusinessException("出库单不存在");
+        return order;
+    }
 
     @Override
     public Page<OutOrder> page(int current, int size, String status, Long warehouseId) {
@@ -60,7 +68,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                 && !dto.getDamageRecordIds().isEmpty()) {
             List<DamageRecord> damages = damageRecordMapper.selectBatchIds(dto.getDamageRecordIds());
             for (DamageRecord d : damages) {
-                if (!dto.getWarehouseId().equals(d.getWarehouseId())) {
+                if (!Objects.equals(dto.getWarehouseId(), d.getWarehouseId())) {
                     throw new BusinessException("损坏记录 " + d.getId() + " 不属于所选仓库，无法操作");
                 }
             }
@@ -132,7 +140,7 @@ public class OutOrderServiceImpl implements OutOrderService {
             int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
 
-            StockSnapshot snap = snapshotMapper.selectOne(item.getProductId(), order.getWarehouseId());
+            StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
             BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
             if (beforeQty.compareTo(BigDecimal.valueOf(qty)) < 0) {
                 throw new BusinessException("商品ID " + item.getProductId() + " 库存不足，当前：" +
@@ -156,7 +164,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                     afterQty, snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0);
 
             if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
-                StockSnapshot targetSnap = snapshotMapper.selectOne(item.getProductId(), order.getTargetWarehouseId());
+                StockSnapshot targetSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getTargetWarehouseId());
                 BigDecimal targetBefore = targetSnap != null ? targetSnap.getCurrentQty() : BigDecimal.ZERO;
                 BigDecimal targetAfter = targetBefore.add(BigDecimal.valueOf(qty));
 
@@ -197,8 +205,7 @@ public class OutOrderServiceImpl implements OutOrderService {
 
     @Override
     public List<OutOrderItem> getItems(Long orderId) {
-        return outOrderItemMapper.selectList(
-                new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
+        return outOrderItemMapper.selectItemsWithProductName(orderId);
     }
 
     @Override
@@ -236,7 +243,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                         srcSnap != null && srcSnap.getAlertQty() != null ? srcSnap.getAlertQty() : 0);
 
                 if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
-                    StockSnapshot tgtSnap = snapshotMapper.selectOne(item.getProductId(), order.getTargetWarehouseId());
+                    StockSnapshot tgtSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getTargetWarehouseId());
                     BigDecimal tgtBefore = tgtSnap != null ? tgtSnap.getCurrentQty() : BigDecimal.ZERO;
                     BigDecimal restoreQtyBD = BigDecimal.valueOf(restoreQty);
                     if (tgtBefore.compareTo(restoreQtyBD) < 0)

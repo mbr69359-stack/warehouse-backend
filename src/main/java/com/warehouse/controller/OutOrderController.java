@@ -23,6 +23,11 @@ import java.util.List;
 public class OutOrderController {
     private final OutOrderService outOrderService;
 
+    @GetMapping("/{id}")
+    public Result<OutOrder> getById(@PathVariable Long id) {
+        return Result.success(outOrderService.getById(id));
+    }
+
     @GetMapping
     public Result<PageResult<OutOrder>> page(
             @RequestParam(defaultValue = "1") int current,

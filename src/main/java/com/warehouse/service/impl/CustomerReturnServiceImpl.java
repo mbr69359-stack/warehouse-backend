@@ -1,10 +1,12 @@
 package com.warehouse.service.impl;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.CustomerReturnDTO;
 import com.warehouse.entity.*;
 import com.warehouse.mapper.*;
 import com.warehouse.service.CustomerReturnService;
+import com.warehouse.service.OutOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +15,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -24,7 +27,7 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
     private final CustomerReturnItemMapper customerReturnItemMapper;
     private final OutOrderMapper outOrderMapper;
     private final OutOrderItemMapper outOrderItemMapper;
-    private final DamageRecordMapper damageRecordMapper;
+    private final OutOrderService outOrderService;
 
     @Override
     public Page<CustomerReturn> page(int current, int size, Long warehouseId) {
@@ -48,7 +51,7 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
         outOrder.setRemark(dto.getRemark());
         outOrderMapper.insert(outOrder);
 
-        String operator = createdBy != null ? createdBy : "";
+        List<ConfirmItemDTO> confirmItems = new ArrayList<>();
         for (CustomerReturnDTO.ItemDTO item : dto.getItems()) {
             OutOrderItem orderItem = new OutOrderItem();
             orderItem.setOrderId(outOrder.getId());
@@ -57,21 +60,19 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
             orderItem.setPrice(BigDecimal.ZERO);
             outOrderItemMapper.insert(orderItem);
 
-            DamageRecord damage = new DamageRecord();
-            damage.setWarehouseId(dto.getWarehouseId());
-            damage.setProductId(item.getProductId());
-            damage.setQty(item.getQty());
-            damage.setStatus("PENDING");
-            damage.setRemark(dto.getRemark());
-            damage.setCreatedAt(now);
-            damage.setCreatedBy(operator);
-            damageRecordMapper.insert(damage);
+            ConfirmItemDTO c = new ConfirmItemDTO();
+            c.setItemId(orderItem.getId());
+            c.setActualQty(item.getQty());
+            confirmItems.add(c);
         }
 
+        outOrderService.confirm(outOrder.getId(), confirmItems, operatorId);
+
+        String operator = createdBy != null ? createdBy : "";
         CustomerReturn customerReturn = new CustomerReturn();
         customerReturn.setExchangeNo(exchangeNo);
         customerReturn.setWarehouseId(dto.getWarehouseId());
-        customerReturn.setStatus("DRAFT");
+        customerReturn.setStatus("COMPLETED");
         customerReturn.setRemark(dto.getRemark());
         customerReturn.setCreatedAt(now);
         customerReturn.setCreatedBy(operator);
