@@ -28,6 +28,7 @@ public class LedgerMigrationRunner implements CommandLineRunner {
         ensureProductUuid();
         migrateOpeningBalances();
         rebuildSnapshot();
+        syncInventoryFromLedger();
         printVerification();
 
         log.info("[LedgerMigration] 迁移检查完成");
@@ -120,6 +121,20 @@ public class LedgerMigrationRunner implements CommandLineRunner {
             "  current_qty = VALUES(current_qty), alert_qty = VALUES(alert_qty), updated_at = UTC_TIMESTAMP()"
         );
         log.info("[LedgerMigration] stock_snapshot 已更新");
+    }
+
+    private void syncInventoryFromLedger() {
+        int updated = jdbc.update(
+            "UPDATE inventory i " +
+            "JOIN (SELECT product_id, location_id, SUM(change_qty) AS ledger_sum " +
+            "      FROM inventory_ledger GROUP BY product_id, location_id) l " +
+            "  ON l.product_id = i.product_id AND l.location_id = i.warehouse_id " +
+            "SET i.qty = l.ledger_sum " +
+            "WHERE i.qty != l.ledger_sum"
+        );
+        if (updated > 0) {
+            log.info("[LedgerMigration] inventory.qty 漂移修正 {} 条", updated);
+        }
     }
 
     private void printVerification() {

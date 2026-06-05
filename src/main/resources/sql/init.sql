@@ -378,3 +378,13 @@ ON DUPLICATE KEY UPDATE
 UPDATE stock_snapshot s
 JOIN inventory i ON i.product_id = s.product_id AND i.warehouse_id = s.location_id
 SET s.alert_qty = i.alert_qty, s.updated_at = UTC_TIMESTAMP();
+
+-- 4. 反向同步 inventory.qty = ledger_sum（消除 opening 守卫导致的漂移）
+UPDATE inventory i
+JOIN (
+    SELECT product_id, location_id, SUM(change_qty) AS ledger_sum
+    FROM inventory_ledger
+    GROUP BY product_id, location_id
+) l ON l.product_id = i.product_id AND l.location_id = i.warehouse_id
+SET i.qty = l.ledger_sum
+WHERE i.qty != l.ledger_sum;
