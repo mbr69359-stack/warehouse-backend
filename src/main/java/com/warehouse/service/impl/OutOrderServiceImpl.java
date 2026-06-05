@@ -24,7 +24,6 @@ public class OutOrderServiceImpl implements OutOrderService {
 
     private final OutOrderMapper outOrderMapper;
     private final OutOrderItemMapper outOrderItemMapper;
-    private final InventoryMapper inventoryMapper;
     private final InventoryLedgerMapper ledgerMapper;
     private final StockSnapshotMapper snapshotMapper;
     private final WarehouseMapper warehouseMapper;
@@ -93,18 +92,14 @@ public class OutOrderServiceImpl implements OutOrderService {
             int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
 
-            // 行锁：来源仓库
-            Inventory inv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
-            if (inv == null || inv.getQty() < qty) {
+            // 来源仓库库存
+            StockSnapshot snap = snapshotMapper.selectOne(item.getProductId(), order.getWarehouseId());
+            BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
+            if (beforeQty.compareTo(BigDecimal.valueOf(qty)) < 0) {
                 throw new BusinessException("商品ID " + item.getProductId() + " 库存不足，当前：" +
-                        (inv == null ? 0 : inv.getQty()) + "，需要：" + qty);
+                        beforeQty.toPlainString() + "，需要：" + qty);
             }
-
-            int beforeQty = inv.getQty();
-            int afterQty  = beforeQty - qty;
-            inv.setQty(afterQty);
-            if (inventoryMapper.updateById(inv) == 0)
-                throw new BusinessException("库存数据已被并发修改，请刷新后重试");
+            BigDecimal afterQty = beforeQty.subtract(BigDecimal.valueOf(qty));
 
             // 来源仓库：追加出库流水
             InventoryLedger outEntry = new InventoryLedger();
@@ -120,27 +115,13 @@ public class OutOrderServiceImpl implements OutOrderService {
             ledgerMapper.insert(outEntry);
 
             snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
-                    new BigDecimal(afterQty), inv.getAlertQty() != null ? inv.getAlertQty() : 0);
+                    afterQty, snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0);
 
             // 调拨出库：同步增加目标仓库
             if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
-                Inventory targetInv = inventoryMapper.selectForUpdate(order.getTargetWarehouseId(), item.getProductId());
-                int targetBefore;
-                if (targetInv == null) {
-                    targetInv = new Inventory();
-                    targetInv.setWarehouseId(order.getTargetWarehouseId());
-                    targetInv.setProductId(item.getProductId());
-                    targetInv.setQty(qty); targetInv.setAlertQty(0);
-                    inventoryMapper.insert(targetInv);
-                    targetBefore = 0;
-                } else {
-                    targetBefore = targetInv.getQty();
-                    targetInv.setQty(targetBefore + qty);
-                    if (inventoryMapper.updateById(targetInv) == 0)
-                        throw new BusinessException("目标仓库库存数据已被并发修改，请刷新后重试");
-                }
-
-                int targetAfter = targetBefore + qty;
+                StockSnapshot targetSnap = snapshotMapper.selectOne(item.getProductId(), order.getTargetWarehouseId());
+                BigDecimal targetBefore = targetSnap != null ? targetSnap.getCurrentQty() : BigDecimal.ZERO;
+                BigDecimal targetAfter = targetBefore.add(BigDecimal.valueOf(qty));
 
                 // 目标仓库：追加调拨入库流水
                 InventoryLedger inEntry = new InventoryLedger();
@@ -157,8 +138,8 @@ public class OutOrderServiceImpl implements OutOrderService {
                 ledgerMapper.insert(inEntry);
 
                 snapshotMapper.upsert(item.getProductId(), order.getTargetWarehouseId(),
-                        new BigDecimal(targetAfter),
-                        targetInv.getAlertQty() != null ? targetInv.getAlertQty() : 0);
+                        targetAfter,
+                        targetSnap != null && targetSnap.getAlertQty() != null ? targetSnap.getAlertQty() : 0);
             }
         }
 
@@ -187,10 +168,9 @@ public class OutOrderServiceImpl implements OutOrderService {
                 if (restoreQty <= 0) continue;
 
                 // 来源仓库：恢复库存
-                Inventory srcInv = inventoryMapper.selectForUpdate(order.getWarehouseId(), item.getProductId());
-                int srcBefore = srcInv != null ? srcInv.getQty() : 0;
-                int srcAfter  = srcBefore + restoreQty;
-                inventoryMapper.updateQty(order.getWarehouseId(), item.getProductId(), restoreQty);
+                StockSnapshot srcSnap = snapshotMapper.selectOne(item.getProductId(), order.getWarehouseId());
+                BigDecimal srcBefore = srcSnap != null ? srcSnap.getCurrentQty() : BigDecimal.ZERO;
+                BigDecimal srcAfter  = srcBefore.add(BigDecimal.valueOf(restoreQty));
 
                 InventoryLedger cancelEntry = new InventoryLedger();
                 cancelEntry.setId(UUID.randomUUID().toString());
@@ -206,18 +186,18 @@ public class OutOrderServiceImpl implements OutOrderService {
                 ledgerMapper.insert(cancelEntry);
 
                 snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
-                        new BigDecimal(srcAfter),
-                        srcInv != null && srcInv.getAlertQty() != null ? srcInv.getAlertQty() : 0);
+                        srcAfter,
+                        srcSnap != null && srcSnap.getAlertQty() != null ? srcSnap.getAlertQty() : 0);
 
                 // 调拨撤销：目标仓库回扣
                 if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
-                    Inventory tgtInv = inventoryMapper.selectForUpdate(order.getTargetWarehouseId(), item.getProductId());
-                    int tgtBefore = tgtInv != null ? tgtInv.getQty() : 0;
-                    if (tgtBefore < restoreQty)
+                    StockSnapshot tgtSnap = snapshotMapper.selectOne(item.getProductId(), order.getTargetWarehouseId());
+                    BigDecimal tgtBefore = tgtSnap != null ? tgtSnap.getCurrentQty() : BigDecimal.ZERO;
+                    BigDecimal restoreQtyBD = BigDecimal.valueOf(restoreQty);
+                    if (tgtBefore.compareTo(restoreQtyBD) < 0)
                         throw new BusinessException("目标仓库库存不足以撤销调拨，当前：" + tgtBefore + "，需撤回：" + restoreQty);
 
-                    int tgtAfter = tgtBefore - restoreQty;
-                    inventoryMapper.updateQty(order.getTargetWarehouseId(), item.getProductId(), -restoreQty);
+                    BigDecimal tgtAfter = tgtBefore.subtract(restoreQtyBD);
 
                     InventoryLedger transferCancelEntry = new InventoryLedger();
                     transferCancelEntry.setId(UUID.randomUUID().toString());
@@ -233,8 +213,8 @@ public class OutOrderServiceImpl implements OutOrderService {
                     ledgerMapper.insert(transferCancelEntry);
 
                     snapshotMapper.upsert(item.getProductId(), order.getTargetWarehouseId(),
-                            new BigDecimal(tgtAfter),
-                            tgtInv != null && tgtInv.getAlertQty() != null ? tgtInv.getAlertQty() : 0);
+                            tgtAfter,
+                            tgtSnap != null && tgtSnap.getAlertQty() != null ? tgtSnap.getAlertQty() : 0);
                 }
             }
         }
