@@ -17,15 +17,6 @@ import java.util.Map;
 @Mapper
 public interface InventoryMapper extends BaseMapper<Inventory> {
 
-    @Select("SELECT * FROM inventory WHERE warehouse_id = #{warehouseId} AND product_id = #{productId} FOR UPDATE")
-    Inventory selectForUpdate(@Param("warehouseId") Long warehouseId, @Param("productId") Long productId);
-
-    @Update("UPDATE inventory SET qty = qty + #{delta}, version = version + 1 WHERE warehouse_id = #{warehouseId} AND product_id = #{productId}")
-    int updateQty(@Param("warehouseId") Long warehouseId, @Param("productId") Long productId, @Param("delta") int delta);
-
-    @Insert("INSERT INTO inventory (warehouse_id, product_id, qty) VALUES (#{warehouseId}, #{productId}, #{delta}) ON DUPLICATE KEY UPDATE qty = qty + #{delta}")
-    void upsertQty(@Param("warehouseId") Long warehouseId, @Param("productId") Long productId, @Param("delta") int delta);
-
     @Select("SELECT IFNULL(SUM(qty), 0) FROM inventory")
     Long selectTotalQty();
 

@@ -45,7 +45,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     @Transactional
-    public void check(InventoryCheckDTO dto) {
+    public void check(InventoryCheckDTO dto, String operator) {
         if (dto.getItems() == null) return;
         Long warehouseId = dto.getWarehouseId();
         if (CHECKING.putIfAbsent(warehouseId, Boolean.TRUE) != null) {
@@ -66,7 +66,7 @@ public class InventoryServiceImpl implements InventoryService {
                     ledger.setLocationId(warehouseId);
                     ledger.setChangeQty(BigDecimal.valueOf(delta));
                     ledger.setType("adjust");
-                    ledger.setOperator("");
+                    ledger.setOperator(operator != null ? operator : "");
                     ledger.setNote(dto.getRemark());
                     ledger.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
                     ledger.setSynced(1);

@@ -11,7 +11,7 @@ import java.util.List;
 public interface InventoryService {
     Page<Inventory> page(int current, int size, Long warehouseId, Long productId, LocalDateTime updatedAfter);
     List<Inventory> listAlerts();
-    void check(InventoryCheckDTO dto);
+    void check(InventoryCheckDTO dto, String operator);
     void setAlertQty(Long warehouseId, Long productId, Integer alertQty);
     InventoryStatsVO getStats();
     List<InventoryChartItemVO> getChartData(String type, Long warehouseId);

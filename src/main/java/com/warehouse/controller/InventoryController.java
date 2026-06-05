@@ -11,7 +11,9 @@ import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import com.warehouse.config.JwtUserDetails;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
@@ -43,8 +45,9 @@ public class InventoryController {
 
     @PostMapping("/check")
     @PreAuthorize("hasRole('ADMIN')")
-    public Result<Void> check(@RequestBody @Validated InventoryCheckDTO dto) {
-        inventoryService.check(dto); return Result.success();
+    public Result<Void> check(@RequestBody @Validated InventoryCheckDTO dto,
+                              @AuthenticationPrincipal JwtUserDetails user) {
+        inventoryService.check(dto, String.valueOf(user.getUserId())); return Result.success();
     }
 
     @PutMapping("/alert")
