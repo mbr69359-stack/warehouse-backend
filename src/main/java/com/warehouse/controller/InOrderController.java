@@ -54,6 +54,11 @@ public class InOrderController {
         return Result.success(PageResult.of(inOrderService.page(current, size, status, warehouseId, supplierId)));
     }
 
+    @GetMapping("/{id}")
+    public Result<InOrder> getById(@PathVariable Long id) {
+        return Result.success(inOrderService.getById(id));
+    }
+
     @PostMapping
     @PreAuthorize("isAuthenticated()")
     public Result<Long> create(@RequestBody @Validated InOrderDTO dto,

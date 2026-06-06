@@ -117,6 +117,13 @@ public class InOrderServiceImpl implements InOrderService {
     }
 
     @Override
+    public InOrder getById(Long id) {
+        InOrder order = inOrderMapper.selectById(id);
+        if (order == null) throw new BusinessException("入库单不存在");
+        return order;
+    }
+
+    @Override
     public List<InOrderItem> getItems(Long orderId) {
         return inOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
