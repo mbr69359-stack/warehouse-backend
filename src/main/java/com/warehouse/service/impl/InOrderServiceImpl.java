@@ -125,7 +125,7 @@ public class InOrderServiceImpl implements InOrderService {
     @Override
     @Transactional
     public void delete(Long orderId, Long operatorId) {
-        InOrder order = inOrderMapper.selectById(orderId);
+        InOrder order = inOrderMapper.selectByIdForUpdate(orderId);
         if (order == null) throw new BusinessException("入库单不存在");
 
         if ("CONFIRMED".equals(order.getStatus())) {
@@ -171,7 +171,8 @@ public class InOrderServiceImpl implements InOrderService {
 
                     damageRecordMapper.delete(new LambdaQueryWrapper<DamageRecord>()
                             .eq(DamageRecord::getSource, "RETURN_INBOUND")
-                            .eq(DamageRecord::getSourceId, customerReturn.getId()));
+                            .eq(DamageRecord::getSourceId, customerReturn.getId())
+                            .isNull(DamageRecord::getOutOrderId));
                 }
             }
         }

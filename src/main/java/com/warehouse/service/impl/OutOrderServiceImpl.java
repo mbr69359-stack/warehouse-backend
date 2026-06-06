@@ -221,7 +221,7 @@ public class OutOrderServiceImpl implements OutOrderService {
     @Override
     @Transactional
     public void delete(Long orderId, Long operatorId) {
-        OutOrder order = outOrderMapper.selectById(orderId);
+        OutOrder order = outOrderMapper.selectByIdForUpdate(orderId);
         if (order == null) throw new BusinessException("出库单不存在");
 
         if ("CONFIRMED".equals(order.getStatus())) {
@@ -293,7 +293,7 @@ public class OutOrderServiceImpl implements OutOrderService {
 
             if ("REPLACEMENT_OUT".equals(order.getType())) {
                 UpdateWrapper<CustomerReturn> uw = new UpdateWrapper<>();
-                uw.eq("out_order_id", orderId).set("status", "INBOUND_DONE");
+                uw.eq("out_order_id", orderId).set("status", "INBOUND_DONE").set("out_order_id", null);
                 customerReturnMapper.update(null, uw);
             }
         } else {
