@@ -119,7 +119,7 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
     @Override
     @Transactional
     public void confirmInbound(Long returnId, List<ConfirmItemDTO> items, Long operatorId) {
-        CustomerReturn ret = customerReturnMapper.selectById(returnId);
+        CustomerReturn ret = customerReturnMapper.selectByIdForUpdate(returnId);
         if (ret == null) throw new BusinessException("退换货单不存在");
         if (!"DRAFT".equals(ret.getStatus())) throw new BusinessException("该退换货单已完成");
         if (ret.getInOrderId() == null) throw new BusinessException("退货入库单不存在");

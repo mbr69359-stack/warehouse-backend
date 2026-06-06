@@ -112,7 +112,7 @@ public class OutOrderServiceImpl implements OutOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
-        OutOrder order = outOrderMapper.selectById(orderId);
+        OutOrder order = outOrderMapper.selectByIdForUpdate(orderId);
         if (order == null) throw new BusinessException("出库单不存在");
         if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("该出库单已确认");
 
@@ -289,7 +289,7 @@ public class OutOrderServiceImpl implements OutOrderService {
 
             if ("REPLACEMENT_OUT".equals(order.getType())) {
                 UpdateWrapper<CustomerReturn> uw = new UpdateWrapper<>();
-                uw.eq("out_order_id", orderId).set("status", "DRAFT");
+                uw.eq("out_order_id", orderId).set("status", "INBOUND_DONE");
                 customerReturnMapper.update(null, uw);
             }
         } else if ("DAMAGE_OUT".equals(order.getType())) {

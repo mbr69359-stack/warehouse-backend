@@ -10,6 +10,9 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface CustomerReturnMapper extends BaseMapper<CustomerReturn> {
 
+    @Select("SELECT * FROM customer_return WHERE id = #{id} FOR UPDATE")
+    CustomerReturn selectByIdForUpdate(@Param("id") Long id);
+
     @Select("<script>" +
             "SELECT cr.*, w.name AS warehouse_name, oo.order_no AS out_order_no " +
             "FROM customer_return cr " +
