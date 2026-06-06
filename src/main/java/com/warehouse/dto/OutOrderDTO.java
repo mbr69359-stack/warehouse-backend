@@ -16,6 +16,8 @@ public class OutOrderDTO {
     private String type;
     private String remark;
     private Long targetWarehouseId;
+    /** 关联客户ID（可选） */
+    private Long customerId;
     private List<Long> damageRecordIds;
     @Valid
     private List<Item> items;

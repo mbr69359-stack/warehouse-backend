@@ -22,4 +22,9 @@ public class OutOrder {
     private LocalDateTime confirmTime;
     private Long targetWarehouseId;
     private String exchangeNo;
+    /** 关联客户ID（可选） */
+    private Long customerId;
+    /** 客户名称（非持久化，用于接口返回） */
+    @TableField(exist = false)
+    private String customerName;
 }

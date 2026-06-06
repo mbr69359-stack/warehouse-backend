@@ -35,11 +35,17 @@ public class OutOrderServiceImpl implements OutOrderService {
     private final WarehouseMapper warehouseMapper;
     private final DamageRecordMapper damageRecordMapper;
     private final CustomerReturnMapper customerReturnMapper;
+    private final CustomerMapper customerMapper;
 
     @Override
     public OutOrder getById(Long id) {
         OutOrder order = outOrderMapper.selectById(id);
         if (order == null) throw new BusinessException("出库单不存在");
+        // 填充客户名称
+        if (order.getCustomerId() != null) {
+            Customer c = customerMapper.selectById(order.getCustomerId());
+            if (c != null) order.setCustomerName(c.getName());
+        }
         return order;
     }
 
@@ -53,7 +59,22 @@ public class OutOrderServiceImpl implements OutOrderService {
                 .ge(start != null, OutOrder::getCreateTime, start)
                 .le(end != null, OutOrder::getCreateTime, end)
                 .orderByDesc(OutOrder::getCreateTime);
-        return outOrderMapper.selectPage(new Page<>(current, size), q);
+        Page<OutOrder> result = outOrderMapper.selectPage(new Page<>(current, size), q);
+        // 批量填充客户名称，避免 N+1 查询
+        List<Long> cids = result.getRecords().stream()
+                .filter(o -> o.getCustomerId() != null)
+                .map(OutOrder::getCustomerId).distinct()
+                .collect(java.util.stream.Collectors.toList());
+        if (!cids.isEmpty()) {
+            java.util.Map<Long, String> nameMap = customerMapper.selectBatchIds(cids)
+                    .stream().collect(java.util.stream.Collectors.toMap(
+                            Customer::getId,
+                            Customer::getName));
+            result.getRecords().forEach(o -> {
+                if (o.getCustomerId() != null) o.setCustomerName(nameMap.get(o.getCustomerId()));
+            });
+        }
+        return result;
     }
 
     @Override
@@ -67,6 +88,8 @@ public class OutOrderServiceImpl implements OutOrderService {
         order.setOperatorId(operatorId);
         order.setRemark(dto.getRemark());
         order.setTargetWarehouseId(dto.getTargetWarehouseId());
+        // 保存客户关联（可选字段）
+        order.setCustomerId(dto.getCustomerId());
         outOrderMapper.insert(order);
 
         if ("DAMAGE_OUT".equals(dto.getType())
