@@ -20,6 +20,8 @@ public class Product {
     private String barcode;
     private String image;
     private String remark;
+    private BigDecimal weightPerBox;
+    private Integer qtyPerBox;
     private Integer status;
     @TableLogic
     private Integer deleted;
