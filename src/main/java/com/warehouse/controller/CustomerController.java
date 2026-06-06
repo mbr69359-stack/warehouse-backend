@@ -41,7 +41,7 @@ public class CustomerController {
     /** 更新客户信息（需要管理员权限） */
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public Result<Void> update(@PathVariable Long id, @RequestBody CustomerDTO dto) {
+    public Result<Void> update(@PathVariable Long id, @RequestBody @Validated CustomerDTO dto) {
         dto.setId(id);
         customerService.update(dto);
         return Result.success();
