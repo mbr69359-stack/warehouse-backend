@@ -16,6 +16,7 @@ public class CustomerReturn {
     private LocalDateTime createdAt;
     private String createdBy;
     private Long outOrderId;
+    private Long inOrderId;
 
     @TableField(exist = false)
     private String warehouseName;

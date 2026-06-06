@@ -29,6 +29,7 @@ public class LedgerMigrationRunner implements CommandLineRunner {
         ensureProductSpecBarcode();
         ensureDamageTables();
         ensureOutOrderExchangeNo();
+        ensureReturnInboundColumns();
         migrateOpeningBalances();
         rebuildSnapshot();
         syncInventoryFromLedger();
@@ -140,6 +141,27 @@ public class LedgerMigrationRunner implements CommandLineRunner {
     private void ensureOutOrderExchangeNo() {
         addColumnIfMissing("out_order", "exchange_no",
             "ALTER TABLE out_order ADD COLUMN exchange_no VARCHAR(50) NULL");
+    }
+
+    private void ensureReturnInboundColumns() {
+        Integer hasInOrderId = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_return' AND COLUMN_NAME = 'in_order_id'",
+            Integer.class);
+        if (hasInOrderId != null && hasInOrderId == 0) {
+            // 首次迁移：清理旧流程产生的草稿单（库存未变动，可安全删除）
+            jdbc.update(
+                "DELETE oo FROM out_order oo " +
+                "JOIN customer_return cr ON cr.out_order_id = oo.id " +
+                "WHERE cr.status = 'DRAFT'");
+            jdbc.update("DELETE FROM customer_return WHERE status = 'DRAFT'");
+            jdbc.execute("ALTER TABLE customer_return ADD COLUMN in_order_id BIGINT NULL");
+            log.info("[LedgerMigration] customer_return.in_order_id 已添加，旧草稿数据已清理");
+        }
+        addColumnIfMissing("damage_record", "source",
+            "ALTER TABLE damage_record ADD COLUMN source VARCHAR(30) NULL");
+        addColumnIfMissing("damage_record", "source_id",
+            "ALTER TABLE damage_record ADD COLUMN source_id BIGINT NULL");
     }
 
     private void addColumnIfMissing(String table, String column, String alterSql) {

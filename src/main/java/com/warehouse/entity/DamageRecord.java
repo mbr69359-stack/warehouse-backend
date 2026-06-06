@@ -18,6 +18,8 @@ public class DamageRecord {
     private String createdBy;
     private LocalDateTime resolvedAt;
     private Long outOrderId;
+    private String source;   // MANUAL / RETURN_INBOUND
+    private Long sourceId;
 
     @TableField(exist = false)
     private String productName;

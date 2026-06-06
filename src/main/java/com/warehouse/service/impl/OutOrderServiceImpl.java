@@ -33,6 +33,7 @@ public class OutOrderServiceImpl implements OutOrderService {
     private final StockSnapshotMapper snapshotMapper;
     private final WarehouseMapper warehouseMapper;
     private final DamageRecordMapper damageRecordMapper;
+    private final CustomerReturnMapper customerReturnMapper;
 
     @Override
     public OutOrder getById(Long id) {
@@ -85,8 +86,12 @@ public class OutOrderServiceImpl implements OutOrderService {
                 outOrderItemMapper.insert(item);
             }
             for (DamageRecord d : damages) {
-                d.setOutOrderId(order.getId());
-                damageRecordMapper.updateById(d);
+                UpdateWrapper<DamageRecord> lock = new UpdateWrapper<>();
+                lock.eq("id", d.getId()).isNull("out_order_id").set("out_order_id", order.getId());
+                int updated = damageRecordMapper.update(null, lock);
+                if (updated == 0) {
+                    throw new BusinessException("损坏记录 " + d.getId() + " 已被其他出库单占用，请刷新后重试");
+                }
             }
         } else {
             if (dto.getItems() == null || dto.getItems().isEmpty()) {
@@ -136,10 +141,12 @@ public class OutOrderServiceImpl implements OutOrderService {
         else if ("REPLACEMENT_OUT".equals(order.getType())) ledgerType = "replacement_out";
         else ledgerType = "outbound";
 
+        java.util.Set<Long> deductedProductIds = new java.util.HashSet<>();
         for (OutOrderItem item : items) {
             int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
 
+            deductedProductIds.add(item.getProductId());
             StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
             BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
             if (beforeQty.compareTo(BigDecimal.valueOf(qty)) < 0) {
@@ -192,6 +199,7 @@ public class OutOrderServiceImpl implements OutOrderService {
             List<DamageRecord> damages = damageRecordMapper.selectList(
                     new LambdaQueryWrapper<DamageRecord>().eq(DamageRecord::getOutOrderId, orderId));
             for (DamageRecord d : damages) {
+                if (!deductedProductIds.contains(d.getProductId())) continue;
                 d.setStatus("RESOLVED");
                 d.setResolvedAt(resolvedAt);
                 damageRecordMapper.updateById(d);
@@ -221,7 +229,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                 int restoreQty = (item.getActualQty() != null) ? item.getActualQty() : 0;
                 if (restoreQty <= 0) continue;
 
-                StockSnapshot srcSnap = snapshotMapper.selectOne(item.getProductId(), order.getWarehouseId());
+                StockSnapshot srcSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
                 BigDecimal srcBefore = srcSnap != null ? srcSnap.getCurrentQty() : BigDecimal.ZERO;
                 BigDecimal srcAfter  = srcBefore.add(BigDecimal.valueOf(restoreQty));
 
@@ -277,6 +285,12 @@ public class OutOrderServiceImpl implements OutOrderService {
                   .set("resolved_at", null)
                   .set("out_order_id", null);
                 damageRecordMapper.update(null, uw);
+            }
+
+            if ("REPLACEMENT_OUT".equals(order.getType())) {
+                UpdateWrapper<CustomerReturn> uw = new UpdateWrapper<>();
+                uw.eq("out_order_id", orderId).set("status", "DRAFT");
+                customerReturnMapper.update(null, uw);
             }
         } else if ("DAMAGE_OUT".equals(order.getType())) {
             UpdateWrapper<DamageRecord> uw = new UpdateWrapper<>();

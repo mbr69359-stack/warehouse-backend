@@ -14,4 +14,9 @@ public class InOrderItem {
     private Integer planQty;
     private Integer actualQty;
     private BigDecimal price;
+
+    @TableField(exist = false)
+    private String productName;
+    @TableField(exist = false)
+    private String skuCode;
 }
