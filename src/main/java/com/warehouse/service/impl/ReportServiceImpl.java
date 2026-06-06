@@ -41,4 +41,9 @@ public class ReportServiceImpl implements ReportService {
     public Map<String, Object> inventorySummary(Long warehouseId) {
         return inventoryMapper.selectInventorySummary(warehouseId);
     }
+
+    @Override
+    public Map<String, Object> getDashboardStats() {
+        return outOrderMapper.selectDashboardStats();
+    }
 }

@@ -23,4 +23,11 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
     List<Map<String, Object>> selectDailyReport(
             @Param("startDate") String startDate,
             @Param("endDate") String endDate);
+
+    @Select("SELECT " +
+            "COALESCE(SUM(CASE WHEN DATE(o.create_time) = CURDATE() THEN COALESCE(i.actual_qty, i.qty) ELSE 0 END), 0) AS todayOutQty, " +
+            "COALESCE(SUM(CASE WHEN YEAR(o.create_time) = YEAR(CURDATE()) AND MONTH(o.create_time) = MONTH(CURDATE()) THEN COALESCE(i.actual_qty, i.qty) * COALESCE(i.price, 0) ELSE 0 END), 0) AS monthSalesAmount " +
+            "FROM out_order o LEFT JOIN out_order_item i ON o.id = i.order_id " +
+            "WHERE o.status = 'CONFIRMED' AND o.deleted = 0")
+    Map<String, Object> selectDashboardStats();
 }

@@ -36,4 +36,10 @@ public class ReportController {
             @RequestParam(required = false) Long warehouseId) {
         return Result.success(reportService.inventorySummary(warehouseId));
     }
+
+    @GetMapping("/dashboard")
+    @PreAuthorize("isAuthenticated()")
+    public Result<Map<String, Object>> dashboardStats() {
+        return Result.success(reportService.getDashboardStats());
+    }
 }
