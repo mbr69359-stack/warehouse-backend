@@ -3,6 +3,7 @@ package com.warehouse.controller;
 import com.warehouse.common.PageResult;
 import com.warehouse.common.Result;
 import com.warehouse.config.JwtUserDetails;
+import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.CustomerReturnDTO;
 import com.warehouse.entity.CustomerReturn;
 import com.warehouse.entity.CustomerReturnItem;
@@ -38,6 +39,15 @@ public class CustomerReturnController {
                                @AuthenticationPrincipal UserDetails user) {
         JwtUserDetails jwtUser = (JwtUserDetails) user;
         return Result.success(customerReturnService.create(dto, jwtUser.getUsername(), jwtUser.getUserId()));
+    }
+
+    @PostMapping("/{id}/confirm")
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
+    public Result<Void> confirm(@PathVariable Long id,
+                                @RequestBody List<ConfirmItemDTO> items,
+                                @AuthenticationPrincipal UserDetails user) {
+        customerReturnService.confirm(id, items, ((JwtUserDetails) user).getUserId());
+        return Result.success();
     }
 
     @GetMapping("/{id}/items")

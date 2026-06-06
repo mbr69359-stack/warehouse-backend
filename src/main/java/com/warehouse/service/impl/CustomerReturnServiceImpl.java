@@ -1,6 +1,7 @@
 package com.warehouse.service.impl;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.warehouse.common.BusinessException;
 import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.CustomerReturnDTO;
 import com.warehouse.entity.*;
@@ -15,7 +16,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -53,7 +53,6 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
         outOrderMapper.insert(outOrder);
 
         String operator = createdBy != null ? createdBy : "";
-        List<ConfirmItemDTO> confirmItems = new ArrayList<>();
         for (CustomerReturnDTO.ItemDTO item : dto.getItems()) {
             OutOrderItem orderItem = new OutOrderItem();
             orderItem.setOrderId(outOrder.getId());
@@ -61,11 +60,6 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
             orderItem.setQty(item.getQty());
             orderItem.setPrice(BigDecimal.ZERO);
             outOrderItemMapper.insert(orderItem);
-
-            ConfirmItemDTO c = new ConfirmItemDTO();
-            c.setItemId(orderItem.getId());
-            c.setActualQty(item.getQty());
-            confirmItems.add(c);
 
             DamageRecord damage = new DamageRecord();
             damage.setWarehouseId(dto.getWarehouseId());
@@ -78,12 +72,10 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
             damageRecordMapper.insert(damage);
         }
 
-        outOrderService.confirm(outOrder.getId(), confirmItems, operatorId);
-
         CustomerReturn customerReturn = new CustomerReturn();
         customerReturn.setExchangeNo(exchangeNo);
         customerReturn.setWarehouseId(dto.getWarehouseId());
-        customerReturn.setStatus("COMPLETED");
+        customerReturn.setStatus("DRAFT");
         customerReturn.setRemark(dto.getRemark());
         customerReturn.setCreatedAt(now);
         customerReturn.setCreatedBy(operator);
@@ -99,6 +91,19 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
         }
 
         return customerReturn.getId();
+    }
+
+    @Override
+    @Transactional
+    public void confirm(Long returnId, List<ConfirmItemDTO> items, Long operatorId) {
+        CustomerReturn ret = customerReturnMapper.selectById(returnId);
+        if (ret == null) throw new BusinessException("退换货单不存在");
+        if (!"DRAFT".equals(ret.getStatus())) throw new BusinessException("该退换货单已完成，无需重复确认");
+
+        outOrderService.confirm(ret.getOutOrderId(), items, operatorId);
+
+        ret.setStatus("COMPLETED");
+        customerReturnMapper.updateById(ret);
     }
 
     @Override
