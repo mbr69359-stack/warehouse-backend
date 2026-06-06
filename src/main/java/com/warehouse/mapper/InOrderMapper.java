@@ -11,6 +11,9 @@ import java.util.Map;
 @Mapper
 public interface InOrderMapper extends BaseMapper<InOrder> {
 
+    @Select("SELECT * FROM in_order WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    InOrder selectByIdForUpdate(@Param("id") Long id);
+
     @Select("SELECT DATE(o.create_time) AS date, COUNT(*) AS count, " +
             "COALESCE(SUM(i.actual_qty * i.price), 0) AS amount " +
             "FROM in_order o LEFT JOIN in_order_item i ON o.id = i.order_id " +

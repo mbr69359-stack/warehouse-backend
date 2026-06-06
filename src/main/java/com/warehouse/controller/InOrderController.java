@@ -76,8 +76,8 @@ public class InOrderController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public Result<Void> delete(@PathVariable Long id) {
-        inOrderService.delete(id); return Result.success();
+    public Result<Void> delete(@PathVariable Long id, @AuthenticationPrincipal UserDetails user) {
+        inOrderService.delete(id, getUid(user)); return Result.success();
     }
 
     private Long getUid(UserDetails user) {

@@ -166,6 +166,9 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
         if ("COMPLETED".equals(ret.getStatus())) throw new BusinessException("该退换货单已完成，无需重复确认");
         if (!"INBOUND_DONE".equals(ret.getStatus()))
             throw new BusinessException("请先完成退货入库，再确认补发出库");
+        // Bug 8 fix: 补发出库单被删后 outOrderId 为 null，给出清晰提示
+        if (ret.getOutOrderId() == null)
+            throw new BusinessException("补发出库单已被删除，请联系管理员重新处理该退换货单");
 
         outOrderService.confirm(ret.getOutOrderId(), items, operatorId);
 

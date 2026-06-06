@@ -59,8 +59,8 @@ public class OutOrderController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public Result<Void> delete(@PathVariable Long id) {
-        outOrderService.delete(id); return Result.success();
+    public Result<Void> delete(@PathVariable Long id, @AuthenticationPrincipal UserDetails user) {
+        outOrderService.delete(id, getUid(user)); return Result.success();
     }
 
     private Long getUid(UserDetails user) {

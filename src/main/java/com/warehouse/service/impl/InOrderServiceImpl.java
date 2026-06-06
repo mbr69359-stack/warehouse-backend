@@ -27,6 +27,8 @@ public class InOrderServiceImpl implements InOrderService {
     private final InOrderItemMapper inOrderItemMapper;
     private final InventoryLedgerMapper ledgerMapper;
     private final StockSnapshotMapper snapshotMapper;
+    private final CustomerReturnMapper customerReturnMapper;
+    private final DamageRecordMapper damageRecordMapper;
 
     @Override
     public Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId) {
@@ -67,7 +69,8 @@ public class InOrderServiceImpl implements InOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
-        InOrder order = inOrderMapper.selectById(orderId);
+        // Bug 1 fix: 加行锁，防止并发重复确认导致库存翻倍
+        InOrder order = inOrderMapper.selectByIdForUpdate(orderId);
         if (order == null) throw new BusinessException("入库单不存在");
         if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("该入库单已确认");
 
@@ -87,12 +90,11 @@ public class InOrderServiceImpl implements InOrderService {
             int qty = item.getActualQty() != null ? item.getActualQty() : 0;
             if (qty <= 0) continue;
 
-            // 从快照读取当前库存（流水是真相，snapshot 是缓存）
-            StockSnapshot snap = snapshotMapper.selectOne(item.getProductId(), order.getWarehouseId());
+            // Bug 2 fix: 加行锁，防止并发写入 snapshot 时数字互相覆盖
+            StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
             BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
             BigDecimal afterQty = beforeQty.add(BigDecimal.valueOf(qty));
 
-            // 追加流水（核心：只增不改）
             InventoryLedger entry = new InventoryLedger();
             entry.setId(UUID.randomUUID().toString());
             entry.setProductId(item.getProductId());
@@ -105,7 +107,6 @@ public class InOrderServiceImpl implements InOrderService {
             entry.setSynced(1);
             ledgerMapper.insert(entry);
 
-            // 更新快照缓存
             snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
                     afterQty, snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0);
         }
@@ -123,7 +124,7 @@ public class InOrderServiceImpl implements InOrderService {
 
     @Override
     @Transactional
-    public void delete(Long orderId) {
+    public void delete(Long orderId, Long operatorId) {
         InOrder order = inOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("入库单不存在");
 
@@ -142,7 +143,6 @@ public class InOrderServiceImpl implements InOrderService {
 
                 BigDecimal afterQty = beforeQty.subtract(actualQtyBD);
 
-                // 追加撤销流水（负数）
                 InventoryLedger entry = new InventoryLedger();
                 entry.setId(UUID.randomUUID().toString());
                 entry.setProductId(item.getProductId());
@@ -150,15 +150,29 @@ public class InOrderServiceImpl implements InOrderService {
                 entry.setChangeQty(new BigDecimal(-actualQty));
                 entry.setType("inbound_cancel");
                 entry.setDocumentNo(order.getOrderNo());
-                entry.setOperator("system");
+                // Bug 9 fix: 记录真实操作人，不再写死 "system"
+                entry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
                 entry.setNote("撤销入库单 " + order.getOrderNo());
                 entry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
                 entry.setSynced(1);
                 ledgerMapper.insert(entry);
 
-                // 更新快照
                 snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
                         afterQty, snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0);
+            }
+
+            // Bug 5 fix: 退货入库单被删时，回退关联的退换货单状态，并清理自动生成的损坏记录
+            if ("RETURN_IN".equals(order.getType())) {
+                CustomerReturn customerReturn = customerReturnMapper.selectOne(
+                        new LambdaQueryWrapper<CustomerReturn>().eq(CustomerReturn::getInOrderId, orderId));
+                if (customerReturn != null) {
+                    customerReturn.setStatus("DRAFT");
+                    customerReturnMapper.updateById(customerReturn);
+
+                    damageRecordMapper.delete(new LambdaQueryWrapper<DamageRecord>()
+                            .eq(DamageRecord::getSource, "RETURN_INBOUND")
+                            .eq(DamageRecord::getSourceId, customerReturn.getId()));
+                }
             }
         }
 

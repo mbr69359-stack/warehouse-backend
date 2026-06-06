@@ -13,5 +13,5 @@ public interface OutOrderService {
     Long create(OutOrderDTO dto, Long operatorId);
     void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId);
     List<OutOrderItem> getItems(Long orderId);
-    void delete(Long orderId);
+    void delete(Long orderId, Long operatorId);
 }

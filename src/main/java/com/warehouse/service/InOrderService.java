@@ -12,5 +12,5 @@ public interface InOrderService {
     Long create(InOrderDTO dto, Long operatorId);
     void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId);
     List<InOrderItem> getItems(Long orderId);
-    void delete(Long orderId);
+    void delete(Long orderId, Long operatorId);
 }

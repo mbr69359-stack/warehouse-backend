@@ -87,10 +87,12 @@ public class OutOrderServiceImpl implements OutOrderService {
             }
             for (DamageRecord d : damages) {
                 UpdateWrapper<DamageRecord> lock = new UpdateWrapper<>();
-                lock.eq("id", d.getId()).isNull("out_order_id").set("out_order_id", order.getId());
+                // Bug 4 fix: 同时检查 status=PENDING，防止已核销的记录被重复关联出库
+                lock.eq("id", d.getId()).isNull("out_order_id").eq("status", "PENDING")
+                        .set("out_order_id", order.getId());
                 int updated = damageRecordMapper.update(null, lock);
                 if (updated == 0) {
-                    throw new BusinessException("损坏记录 " + d.getId() + " 已被其他出库单占用，请刷新后重试");
+                    throw new BusinessException("损坏记录 " + d.getId() + " 已被其他出库单占用或已核销，请刷新后重试");
                 }
             }
         } else {
@@ -141,12 +143,12 @@ public class OutOrderServiceImpl implements OutOrderService {
         else if ("REPLACEMENT_OUT".equals(order.getType())) ledgerType = "replacement_out";
         else ledgerType = "outbound";
 
-        java.util.Set<Long> deductedProductIds = new java.util.HashSet<>();
         for (OutOrderItem item : items) {
-            int qty = item.getActualQty() != null ? item.getActualQty() : 0;
+            // Bug 3 fix: actualQty 为 null 时用计划数量兜底，防止补发出库不扣库存
+            int qty = item.getActualQty() != null ? item.getActualQty()
+                    : (item.getQty() != null ? item.getQty() : 0);
             if (qty <= 0) continue;
 
-            deductedProductIds.add(item.getProductId());
             StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
             BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
             if (beforeQty.compareTo(BigDecimal.valueOf(qty)) < 0) {
@@ -194,12 +196,12 @@ public class OutOrderServiceImpl implements OutOrderService {
             }
         }
 
+        // Bug 7 fix: 所有绑定该出库单的损坏记录统一标为 RESOLVED，不再跳过 qty=0 的商品
         if ("DAMAGE_OUT".equals(order.getType())) {
             LocalDateTime resolvedAt = LocalDateTime.now(ZoneOffset.UTC);
             List<DamageRecord> damages = damageRecordMapper.selectList(
                     new LambdaQueryWrapper<DamageRecord>().eq(DamageRecord::getOutOrderId, orderId));
             for (DamageRecord d : damages) {
-                if (!deductedProductIds.contains(d.getProductId())) continue;
                 d.setStatus("RESOLVED");
                 d.setResolvedAt(resolvedAt);
                 damageRecordMapper.updateById(d);
@@ -218,7 +220,7 @@ public class OutOrderServiceImpl implements OutOrderService {
 
     @Override
     @Transactional
-    public void delete(Long orderId) {
+    public void delete(Long orderId, Long operatorId) {
         OutOrder order = outOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("出库单不存在");
 
@@ -226,7 +228,8 @@ public class OutOrderServiceImpl implements OutOrderService {
             List<OutOrderItem> items = outOrderItemMapper.selectList(
                     new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
             for (OutOrderItem item : items) {
-                int restoreQty = (item.getActualQty() != null) ? item.getActualQty() : 0;
+                int restoreQty = (item.getActualQty() != null) ? item.getActualQty()
+                        : (item.getQty() != null ? item.getQty() : 0);
                 if (restoreQty <= 0) continue;
 
                 StockSnapshot srcSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
@@ -240,7 +243,8 @@ public class OutOrderServiceImpl implements OutOrderService {
                 cancelEntry.setChangeQty(new BigDecimal(restoreQty));
                 cancelEntry.setType("outbound_cancel");
                 cancelEntry.setDocumentNo(order.getOrderNo());
-                cancelEntry.setOperator("system");
+                // Bug 9 fix: 记录真实操作人
+                cancelEntry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
                 cancelEntry.setNote("撤销出库单 " + order.getOrderNo());
                 cancelEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
                 cancelEntry.setSynced(1);
@@ -266,7 +270,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                     transferCancelEntry.setChangeQty(new BigDecimal(-restoreQty));
                     transferCancelEntry.setType("transfer_cancel");
                     transferCancelEntry.setDocumentNo(order.getOrderNo());
-                    transferCancelEntry.setOperator("system");
+                    transferCancelEntry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
                     transferCancelEntry.setNote("撤销调拨，还原至仓库 " + order.getWarehouseId());
                     transferCancelEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
                     transferCancelEntry.setSynced(1);
@@ -292,10 +296,19 @@ public class OutOrderServiceImpl implements OutOrderService {
                 uw.eq("out_order_id", orderId).set("status", "INBOUND_DONE");
                 customerReturnMapper.update(null, uw);
             }
-        } else if ("DAMAGE_OUT".equals(order.getType())) {
-            UpdateWrapper<DamageRecord> uw = new UpdateWrapper<>();
-            uw.eq("out_order_id", orderId).set("out_order_id", null);
-            damageRecordMapper.update(null, uw);
+        } else {
+            // Bug 8 fix: DRAFT 状态的出库单被删时也要清理关联引用
+            if ("DAMAGE_OUT".equals(order.getType())) {
+                UpdateWrapper<DamageRecord> uw = new UpdateWrapper<>();
+                uw.eq("out_order_id", orderId).set("out_order_id", null);
+                damageRecordMapper.update(null, uw);
+            }
+            if ("REPLACEMENT_OUT".equals(order.getType())) {
+                // 清空退换货单的补发出库单引用，防止后续流程因引用悬空而报错
+                UpdateWrapper<CustomerReturn> uw = new UpdateWrapper<>();
+                uw.eq("out_order_id", orderId).set("out_order_id", null);
+                customerReturnMapper.update(null, uw);
+            }
         }
 
         outOrderItemMapper.delete(new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
