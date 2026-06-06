@@ -42,4 +42,42 @@ public class ReportController {
     public Result<Map<String, Object>> dashboardStats() {
         return Result.success(reportService.getDashboardStats());
     }
+
+    @GetMapping("/ledger")
+    public Result<List<Map<String, Object>>> ledgerReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Long warehouseId) {
+        return Result.success(reportService.ledgerReport(startDate, endDate, type, warehouseId));
+    }
+
+    @GetMapping("/stock-movement")
+    public Result<List<Map<String, Object>>> stockMovementReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return Result.success(reportService.stockMovementReport(startDate, endDate));
+    }
+
+    @GetMapping("/supplier-statement")
+    public Result<List<Map<String, Object>>> supplierStatement(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long supplierId) {
+        return Result.success(reportService.supplierStatement(startDate, endDate, supplierId));
+    }
+
+    @GetMapping("/customer-statement")
+    public Result<List<Map<String, Object>>> customerStatement(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long customerId) {
+        return Result.success(reportService.customerStatement(startDate, endDate, customerId));
+    }
+
+    @GetMapping("/stocktake")
+    public Result<List<Map<String, Object>>> stocktakeReport(
+            @RequestParam(required = false) Long warehouseId) {
+        return Result.success(reportService.stocktakeReport(warehouseId));
+    }
 }

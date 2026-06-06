@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface StockSnapshotMapper {
@@ -62,6 +63,23 @@ public interface StockSnapshotMapper {
     /** 查某商品跨所有仓位的库存总量（用于删除前校验） */
     @Select("SELECT COALESCE(SUM(current_qty), 0) FROM stock_snapshot WHERE product_id = #{productId}")
     java.math.BigDecimal selectTotalQtyByProductId(@Param("productId") Long productId);
+
+    @Select("<script>" +
+            "SELECT p.id AS productId, p.name AS productName, p.sku_code AS skuCode, " +
+            "       p.spec, p.unit, COALESCE(c.name, '未分类') AS categoryName, " +
+            "       w.name AS warehouseName, ss.location_id AS locationId, " +
+            "       ss.current_qty AS currentQty, ss.alert_qty AS alertQty, " +
+            "       CASE WHEN ss.alert_qty > 0 AND ss.current_qty &lt; ss.alert_qty THEN 1 ELSE 0 END AS isAlert " +
+            "FROM stock_snapshot ss " +
+            "JOIN product p ON p.id = ss.product_id AND p.deleted = 0 " +
+            "LEFT JOIN category c ON c.id = p.category_id AND c.deleted = 0 " +
+            "JOIN warehouse w ON w.id = ss.location_id " +
+            "<where>" +
+            "<if test='warehouseId != null'>ss.location_id = #{warehouseId} </if>" +
+            "</where>" +
+            "ORDER BY isAlert DESC, w.name, p.name" +
+            "</script>")
+    List<Map<String, Object>> selectStocktakeReport(@Param("warehouseId") Long warehouseId);
 
     /** 从 inventory 表同步 alert_qty 到快照（rebuildSnapshot 后调用） */
     @Update("UPDATE stock_snapshot s " +

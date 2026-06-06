@@ -30,4 +30,24 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
             "FROM out_order o LEFT JOIN out_order_item i ON o.id = i.order_id " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0")
     Map<String, Object> selectDashboardStats();
+
+    @Select("<script>" +
+            "SELECT c.id AS customerId, c.name AS customerName, c.contact, c.phone, " +
+            "       COUNT(DISTINCT oo.id) AS orderCount, " +
+            "       COALESCE(SUM(oi.actual_qty), 0) AS totalQty, " +
+            "       COALESCE(SUM(oi.actual_qty * oi.price), 0) AS totalAmount " +
+            "FROM customer c " +
+            "JOIN out_order oo ON oo.customer_id = c.id " +
+            "    AND oo.status = 'CONFIRMED' AND oo.deleted = 0 " +
+            "    AND oo.create_time BETWEEN #{startDate} AND #{endDate} " +
+            "LEFT JOIN out_order_item oi ON oi.order_id = oo.id " +
+            "WHERE c.deleted = 0 " +
+            "<if test='customerId != null'>AND c.id = #{customerId} </if>" +
+            "GROUP BY c.id, c.name, c.contact, c.phone " +
+            "ORDER BY totalAmount DESC" +
+            "</script>")
+    List<Map<String, Object>> selectCustomerStatement(
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("customerId") Long customerId);
 }

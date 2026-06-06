@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import java.util.List;
 import java.util.Map;
 
+
 @Mapper
 public interface InOrderMapper extends BaseMapper<InOrder> {
 
@@ -23,4 +24,57 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
     List<Map<String, Object>> selectDailyReport(
             @Param("startDate") String startDate,
             @Param("endDate") String endDate);
+
+    @Select("SELECT p.id AS productId, p.name AS productName, p.sku_code AS skuCode, p.unit, " +
+            "       COALESCE(c.name, '未分类') AS categoryName, " +
+            "       COALESCE(i_in.inQty, 0) AS inQty, " +
+            "       COALESCE(i_in.inAmount, 0) AS inAmount, " +
+            "       COALESCE(i_out.outQty, 0) AS outQty, " +
+            "       COALESCE(i_out.outAmount, 0) AS outAmount " +
+            "FROM product p " +
+            "LEFT JOIN category c ON c.id = p.category_id AND c.deleted = 0 " +
+            "LEFT JOIN ( " +
+            "    SELECT ii.product_id, SUM(ii.actual_qty) AS inQty, " +
+            "           SUM(ii.actual_qty * ii.price) AS inAmount " +
+            "    FROM in_order_item ii " +
+            "    JOIN in_order io ON io.id = ii.order_id " +
+            "    WHERE io.status = 'CONFIRMED' AND io.deleted = 0 " +
+            "      AND io.create_time BETWEEN #{startDate} AND #{endDate} " +
+            "    GROUP BY ii.product_id " +
+            ") i_in ON i_in.product_id = p.id " +
+            "LEFT JOIN ( " +
+            "    SELECT oi.product_id, SUM(oi.actual_qty) AS outQty, " +
+            "           SUM(oi.actual_qty * oi.price) AS outAmount " +
+            "    FROM out_order_item oi " +
+            "    JOIN out_order oo ON oo.id = oi.order_id " +
+            "    WHERE oo.status = 'CONFIRMED' AND oo.deleted = 0 " +
+            "      AND oo.create_time BETWEEN #{startDate} AND #{endDate} " +
+            "    GROUP BY oi.product_id " +
+            ") i_out ON i_out.product_id = p.id " +
+            "WHERE p.deleted = 0 " +
+            "  AND (i_in.product_id IS NOT NULL OR i_out.product_id IS NOT NULL) " +
+            "ORDER BY (COALESCE(i_in.inAmount, 0) + COALESCE(i_out.outAmount, 0)) DESC")
+    List<Map<String, Object>> selectStockMovementReport(
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate);
+
+    @Select("<script>" +
+            "SELECT s.id AS supplierId, s.name AS supplierName, s.contact, s.phone, " +
+            "       COUNT(DISTINCT io.id) AS orderCount, " +
+            "       COALESCE(SUM(ii.actual_qty), 0) AS totalQty, " +
+            "       COALESCE(SUM(ii.actual_qty * ii.price), 0) AS totalAmount " +
+            "FROM supplier s " +
+            "JOIN in_order io ON io.supplier_id = s.id " +
+            "    AND io.status = 'CONFIRMED' AND io.deleted = 0 " +
+            "    AND io.create_time BETWEEN #{startDate} AND #{endDate} " +
+            "LEFT JOIN in_order_item ii ON ii.order_id = io.id " +
+            "WHERE s.deleted = 0 " +
+            "<if test='supplierId != null'>AND s.id = #{supplierId} </if>" +
+            "GROUP BY s.id, s.name, s.contact, s.phone " +
+            "ORDER BY totalAmount DESC" +
+            "</script>")
+    List<Map<String, Object>> selectSupplierStatement(
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("supplierId") Long supplierId);
 }

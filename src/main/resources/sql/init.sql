@@ -394,3 +394,22 @@ JOIN (
 ) l ON l.product_id = i.product_id AND l.location_id = i.warehouse_id
 SET i.qty = l.ledger_sum
 WHERE i.qty != l.ledger_sum;
+
+-- =============================================
+-- v6：客户表 + out_order 关联客户
+-- =============================================
+CREATE TABLE IF NOT EXISTS customer (
+    id          BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    name        VARCHAR(200) NOT NULL,
+    contact     VARCHAR(50),
+    phone       VARCHAR(20),
+    address     VARCHAR(300),
+    remark      VARCHAR(500),
+    status      SMALLINT NOT NULL DEFAULT 1,
+    deleted     SMALLINT NOT NULL DEFAULT 0,
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE out_order ADD COLUMN IF NOT EXISTS customer_id BIGINT NULL;
+ALTER TABLE out_order ADD COLUMN IF NOT EXISTS exchange_no VARCHAR(50) NULL;
