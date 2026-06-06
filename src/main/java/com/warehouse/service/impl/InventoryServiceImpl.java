@@ -54,7 +54,7 @@ public class InventoryServiceImpl implements InventoryService {
         try {
             for (InventoryCheckDTO.CheckItem ci : dto.getItems()) {
                 int actualQty = ci.getActualQty() != null ? ci.getActualQty() : 0;
-                StockSnapshot snap = stockSnapshotMapper.selectOne(ci.getProductId(), warehouseId);
+                StockSnapshot snap = stockSnapshotMapper.selectOneForUpdate(ci.getProductId(), warehouseId);
                 int beforeQty = snap != null && snap.getCurrentQty() != null
                         ? snap.getCurrentQty().intValue() : 0;
                 int alertQty = snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0;

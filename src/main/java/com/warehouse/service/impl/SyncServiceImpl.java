@@ -76,7 +76,7 @@ public class SyncServiceImpl implements SyncService {
             boolean isOut = "OUT".equals(item.getType()) || item.getQty() < 0;
             int delta = isOut ? -absQty : absQty;
 
-            StockSnapshot snap = stockSnapshotMapper.selectOne(item.getProductId(), item.getWarehouseId());
+            StockSnapshot snap = stockSnapshotMapper.selectOneForUpdate(item.getProductId(), item.getWarehouseId());
             BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
 
             if (isOut && beforeQty.compareTo(BigDecimal.valueOf(absQty)) < 0) {
