@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -43,10 +44,14 @@ public class OutOrderServiceImpl implements OutOrderService {
     }
 
     @Override
-    public Page<OutOrder> page(int current, int size, String status, Long warehouseId) {
+    public Page<OutOrder> page(int current, int size, String status, Long warehouseId, String startDate, String endDate) {
+        LocalDateTime start = startDate != null ? LocalDate.parse(startDate).atStartOfDay() : null;
+        LocalDateTime end = endDate != null ? LocalDate.parse(endDate).atTime(23, 59, 59) : null;
         LambdaQueryWrapper<OutOrder> q = new LambdaQueryWrapper<OutOrder>()
                 .eq(status != null, OutOrder::getStatus, status)
                 .eq(warehouseId != null, OutOrder::getWarehouseId, warehouseId)
+                .ge(start != null, OutOrder::getCreateTime, start)
+                .le(end != null, OutOrder::getCreateTime, end)
                 .orderByDesc(OutOrder::getCreateTime);
         return outOrderMapper.selectPage(new Page<>(current, size), q);
     }

@@ -36,6 +36,8 @@ public class InOrderController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long warehouseId,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
             @AuthenticationPrincipal UserDetails userDetails) {
         Long supplierId = null;
         boolean isSupplier = userDetails.getAuthorities().stream()
@@ -51,7 +53,7 @@ public class InOrderController {
                 supplierId = -1L;
             }
         }
-        return Result.success(PageResult.of(inOrderService.page(current, size, status, warehouseId, supplierId)));
+        return Result.success(PageResult.of(inOrderService.page(current, size, status, warehouseId, supplierId, startDate, endDate)));
     }
 
     @GetMapping("/{id}")

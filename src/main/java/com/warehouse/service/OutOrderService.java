@@ -8,7 +8,7 @@ import com.warehouse.entity.OutOrderItem;
 import java.util.List;
 
 public interface OutOrderService {
-    Page<OutOrder> page(int current, int size, String status, Long warehouseId);
+    Page<OutOrder> page(int current, int size, String status, Long warehouseId, String startDate, String endDate);
     OutOrder getById(Long id);
     Long create(OutOrderDTO dto, Long operatorId);
     void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId);

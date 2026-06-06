@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -31,11 +32,15 @@ public class InOrderServiceImpl implements InOrderService {
     private final DamageRecordMapper damageRecordMapper;
 
     @Override
-    public Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId) {
+    public Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId, String startDate, String endDate) {
+        LocalDateTime start = startDate != null ? LocalDate.parse(startDate).atStartOfDay() : null;
+        LocalDateTime end = endDate != null ? LocalDate.parse(endDate).atTime(23, 59, 59) : null;
         LambdaQueryWrapper<InOrder> q = new LambdaQueryWrapper<InOrder>()
                 .eq(status != null, InOrder::getStatus, status)
                 .eq(warehouseId != null, InOrder::getWarehouseId, warehouseId)
                 .eq(supplierId != null, InOrder::getSupplierId, supplierId)
+                .ge(start != null, InOrder::getCreateTime, start)
+                .le(end != null, InOrder::getCreateTime, end)
                 .orderByDesc(InOrder::getCreateTime);
         return inOrderMapper.selectPage(new Page<>(current, size), q);
     }

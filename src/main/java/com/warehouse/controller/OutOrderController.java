@@ -33,8 +33,10 @@ public class OutOrderController {
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) Long warehouseId) {
-        return Result.success(PageResult.of(outOrderService.page(current, size, status, warehouseId)));
+            @RequestParam(required = false) Long warehouseId,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        return Result.success(PageResult.of(outOrderService.page(current, size, status, warehouseId, startDate, endDate)));
     }
 
     @PostMapping

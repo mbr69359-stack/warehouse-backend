@@ -9,7 +9,7 @@ import java.util.List;
 
 public interface InOrderService {
     InOrder getById(Long id);
-    Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId);
+    Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId, String startDate, String endDate);
     Long create(InOrderDTO dto, Long operatorId);
     void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId);
     List<InOrderItem> getItems(Long orderId);
