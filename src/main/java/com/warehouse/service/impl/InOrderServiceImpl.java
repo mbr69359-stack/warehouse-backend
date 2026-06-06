@@ -147,7 +147,7 @@ public class InOrderServiceImpl implements InOrderService {
                 int actualQty = item.getActualQty() != null ? item.getActualQty() : 0;
                 if (actualQty <= 0) continue;
 
-                StockSnapshot snap = snapshotMapper.selectOne(item.getProductId(), order.getWarehouseId());
+                StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
                 BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
                 BigDecimal actualQtyBD = BigDecimal.valueOf(actualQty);
                 if (beforeQty.compareTo(actualQtyBD) < 0)
