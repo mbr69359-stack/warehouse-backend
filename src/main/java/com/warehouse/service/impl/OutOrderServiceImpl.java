@@ -113,6 +113,8 @@ public class OutOrderServiceImpl implements OutOrderService {
                 item.setProductId(entry.getKey());
                 item.setQty(entry.getValue());
                 item.setPrice(BigDecimal.ZERO);
+                com.warehouse.entity.Product dp = productMapper.selectById(entry.getKey());
+                item.setCostPrice(dp != null && dp.getCostPrice() != null ? dp.getCostPrice() : BigDecimal.ZERO);
                 outOrderItemMapper.insert(item);
             }
             for (DamageRecord d : damages) {
@@ -135,6 +137,8 @@ public class OutOrderServiceImpl implements OutOrderService {
                 item.setProductId(i.getProductId());
                 item.setQty(i.getQty() != null ? i.getQty() : 0);
                 item.setPrice(i.getPrice());
+                com.warehouse.entity.Product prod = productMapper.selectById(i.getProductId());
+                item.setCostPrice(prod != null && prod.getCostPrice() != null ? prod.getCostPrice() : BigDecimal.ZERO);
                 outOrderItemMapper.insert(item);
             }
         }

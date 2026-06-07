@@ -414,3 +414,10 @@ CREATE TABLE IF NOT EXISTS customer (
 
 ALTER TABLE out_order ADD COLUMN IF NOT EXISTS customer_id BIGINT NULL;
 ALTER TABLE out_order ADD COLUMN IF NOT EXISTS exchange_no VARCHAR(50) NULL;
+
+-- =============================================
+-- v7：出库明细成本价快照（毛利报表正确性保障）
+-- 出库时将 product.cost_price 存入明细行，
+-- 避免商品改价后历史毛利数据被污染。
+-- =============================================
+ALTER TABLE out_order_item ADD COLUMN IF NOT EXISTS cost_price DECIMAL(12,2) NOT NULL DEFAULT 0.00;
