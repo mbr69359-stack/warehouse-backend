@@ -17,6 +17,7 @@ public class OutOrderItem {
     private Integer qty;
     private Integer actualQty;
     private BigDecimal price;
+    private BigDecimal costPrice;
 
     @TableField(exist = false)
     private String productName;
