@@ -86,12 +86,4 @@ public class ReportServiceImpl implements ReportService {
     public List<Map<String, Object>> stocktakeReport(Long warehouseId) {
         return stockSnapshotMapper.selectStocktakeReport(warehouseId);
     }
-
-    @Override
-    public List<Map<String, Object>> grossProfitReport(LocalDate startDate, LocalDate endDate, Long warehouseId) {
-        return outOrderMapper.selectGrossProfitReport(
-            startDate.atStartOfDay().format(DT_FMT),
-            endDate.atTime(23, 59, 59).format(DT_FMT),
-            warehouseId);
-    }
 }

@@ -36,7 +36,6 @@ public class OutOrderServiceImpl implements OutOrderService {
     private final DamageRecordMapper damageRecordMapper;
     private final CustomerReturnMapper customerReturnMapper;
     private final CustomerMapper customerMapper;
-    private final ProductMapper productMapper;
 
     @Override
     public OutOrder getById(Long id) {
@@ -113,8 +112,6 @@ public class OutOrderServiceImpl implements OutOrderService {
                 item.setProductId(entry.getKey());
                 item.setQty(entry.getValue());
                 item.setPrice(BigDecimal.ZERO);
-                com.warehouse.entity.Product dp = productMapper.selectById(entry.getKey());
-                item.setCostPrice(dp != null && dp.getCostPrice() != null ? dp.getCostPrice() : BigDecimal.ZERO);
                 outOrderItemMapper.insert(item);
             }
             for (DamageRecord d : damages) {
@@ -137,8 +134,6 @@ public class OutOrderServiceImpl implements OutOrderService {
                 item.setProductId(i.getProductId());
                 item.setQty(i.getQty() != null ? i.getQty() : 0);
                 item.setPrice(i.getPrice());
-                com.warehouse.entity.Product prod = productMapper.selectById(i.getProductId());
-                item.setCostPrice(prod != null && prod.getCostPrice() != null ? prod.getCostPrice() : BigDecimal.ZERO);
                 outOrderItemMapper.insert(item);
             }
         }
@@ -201,13 +196,6 @@ public class OutOrderServiceImpl implements OutOrderService {
             outEntry.setOperator(String.valueOf(operatorId));
             outEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
             outEntry.setSynced(1);
-            if ("DAMAGE_OUT".equals(order.getType()) || "REPLACEMENT_OUT".equals(order.getType())) {
-                com.warehouse.entity.Product p = productMapper.selectById(item.getProductId());
-                if (p != null && p.getCostPrice() != null) {
-                    BigDecimal loss = p.getCostPrice().multiply(BigDecimal.valueOf(qty));
-                    outEntry.setNote("单位成本:" + p.getCostPrice().toPlainString() + ",损失金额:" + loss.toPlainString());
-                }
-            }
             ledgerMapper.insert(outEntry);
 
             snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),

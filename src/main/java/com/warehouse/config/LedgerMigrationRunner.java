@@ -213,8 +213,8 @@ public class LedgerMigrationRunner implements CommandLineRunner {
             "JOIN (SELECT product_id, location_id, SUM(change_qty) AS ledger_sum " +
             "      FROM inventory_ledger GROUP BY product_id, location_id) l " +
             "  ON l.product_id = i.product_id AND l.location_id = i.warehouse_id " +
-            "SET i.qty = GREATEST(0, l.ledger_sum) " +
-            "WHERE i.qty != GREATEST(0, l.ledger_sum)"
+            "SET i.qty = l.ledger_sum " +
+            "WHERE i.qty != l.ledger_sum"
         );
         if (updated > 0) {
             log.info("[LedgerMigration] inventory.qty 漂移修正 {} 条", updated);

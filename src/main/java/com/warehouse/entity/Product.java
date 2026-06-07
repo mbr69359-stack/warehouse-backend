@@ -16,7 +16,6 @@ public class Product {
     private Long categoryId;
     private String unit;
     private BigDecimal price;
-    private BigDecimal costPrice;
     private String spec;
     private String barcode;
     private String image;

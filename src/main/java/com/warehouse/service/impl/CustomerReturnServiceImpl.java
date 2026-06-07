@@ -8,6 +8,7 @@ import com.warehouse.dto.CustomerReturnDTO;
 import com.warehouse.entity.*;
 import com.warehouse.mapper.*;
 import com.warehouse.service.CustomerReturnService;
+import com.warehouse.service.InOrderService;
 import com.warehouse.service.OutOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
     private final OutOrderMapper outOrderMapper;
     private final OutOrderItemMapper outOrderItemMapper;
     private final OutOrderService outOrderService;
+    private final InOrderService inOrderService;
     private final InOrderMapper inOrderMapper;
     private final InOrderItemMapper inOrderItemMapper;
     private final DamageRecordMapper damageRecordMapper;
@@ -124,26 +126,14 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
 
         InOrder inOrder = inOrderMapper.selectById(ret.getInOrderId());
         if (inOrder == null) throw new BusinessException("退货入库单不存在");
-        if ("CONFIRMED".equals(inOrder.getStatus())) throw new BusinessException("退货已核销，请勿重复操作");
+        if ("CONFIRMED".equals(inOrder.getStatus())) throw new BusinessException("退货已入库，请勿重复操作");
 
-        // 更新实收数量
+        // 确认退货入库，触发库存 +m
+        inOrderService.confirm(ret.getInOrderId(), items, operatorId);
+
+        // 以实际入库数量自动生成损坏记录
         List<InOrderItem> inOrderItems = inOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, ret.getInOrderId()));
-        if (items != null && !items.isEmpty()) {
-            java.util.Map<Long, Integer> qtyMap = new java.util.HashMap<>();
-            for (ConfirmItemDTO c : items) qtyMap.put(c.getItemId(), c.getActualQty());
-            for (InOrderItem inItem : inOrderItems) {
-                Integer qty = qtyMap.get(inItem.getId());
-                if (qty != null) { inItem.setActualQty(qty); inOrderItemMapper.updateById(inItem); }
-            }
-            inOrderItems = inOrderItemMapper.selectList(
-                    new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, ret.getInOrderId()));
-        }
-
-        // 退货不入库：直接核销，跳过库存增加
-        inOrder.setStatus("CONFIRMED");
-        inOrder.setConfirmTime(LocalDateTime.now(ZoneOffset.UTC));
-        inOrderMapper.updateById(inOrder);
 
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         String operator = operatorId != null ? String.valueOf(operatorId) : "system";
@@ -155,16 +145,15 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
             damage.setWarehouseId(ret.getWarehouseId());
             damage.setProductId(inItem.getProductId());
             damage.setQty(qty);
-            damage.setStatus("RESOLVED"); // 直接核销，无需再走 DAMAGE_OUT 流程
+            damage.setStatus("PENDING");
             damage.setSource("RETURN_INBOUND");
             damage.setSourceId(returnId);
             damage.setCreatedAt(now);
             damage.setCreatedBy(operator);
-            damage.setResolvedAt(now);
             damageRecordMapper.insert(damage);
         }
 
-        // 标记退货核销已完成，等待下一步补发出库
+        // 标记退货入库已完成，等待下一步补发出库
         ret.setStatus("INBOUND_DONE");
         customerReturnMapper.updateById(ret);
     }
