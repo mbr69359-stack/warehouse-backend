@@ -15,4 +15,5 @@ public interface ReportService {
     List<Map<String, Object>> supplierStatement(LocalDate startDate, LocalDate endDate, Long supplierId);
     List<Map<String, Object>> customerStatement(LocalDate startDate, LocalDate endDate, Long customerId);
     List<Map<String, Object>> stocktakeReport(Long warehouseId);
+    List<Map<String, Object>> grossProfitReport(LocalDate startDate, LocalDate endDate, Long warehouseId);
 }

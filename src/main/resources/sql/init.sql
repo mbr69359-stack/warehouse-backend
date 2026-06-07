@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS product (
     category_id BIGINT,
     unit        VARCHAR(20)  NOT NULL DEFAULT '个',
     price       DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    cost_price  DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     spec        VARCHAR(500),
     barcode     VARCHAR(100),
     image       VARCHAR(500),
