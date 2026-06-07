@@ -6,6 +6,7 @@ import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.InOrderDTO;
 import com.warehouse.entity.*;
 import com.warehouse.mapper.*;
+import java.math.RoundingMode;
 import com.warehouse.common.BusinessException;
 import com.warehouse.service.InOrderService;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class InOrderServiceImpl implements InOrderService {
     private final StockSnapshotMapper snapshotMapper;
     private final CustomerReturnMapper customerReturnMapper;
     private final DamageRecordMapper damageRecordMapper;
+    private final ProductMapper productMapper;
 
     @Override
     public Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId, String startDate, String endDate) {
@@ -110,6 +112,29 @@ public class InOrderServiceImpl implements InOrderService {
             entry.setOperator(String.valueOf(operatorId));
             entry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
             entry.setSynced(1);
+
+            // 加权平均成本：snapshot 尚未更新，此时 selectTotalQtyByProductId 返回的是入库前总量
+            if (item.getPrice() != null && item.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+                Product prod = productMapper.selectById(item.getProductId());
+                if (prod != null) {
+                    BigDecimal totalBefore = snapshotMapper.selectTotalQtyByProductId(item.getProductId());
+                    BigDecimal totalAfter  = totalBefore.add(BigDecimal.valueOf(qty));
+                    if (totalAfter.compareTo(BigDecimal.ZERO) > 0) {
+                        BigDecimal oldCost = prod.getCostPrice() != null ? prod.getCostPrice() : BigDecimal.ZERO;
+                        BigDecimal newCost = totalBefore.multiply(oldCost)
+                                .add(BigDecimal.valueOf(qty).multiply(item.getPrice()))
+                                .divide(totalAfter, 4, RoundingMode.HALF_UP)
+                                .setScale(2, RoundingMode.HALF_UP);
+                        Product toUpdate = new Product();
+                        toUpdate.setId(prod.getId());
+                        toUpdate.setCostPrice(newCost);
+                        productMapper.updateById(toUpdate);
+                        entry.setNote("进价" + item.getPrice().toPlainString()
+                                + " 均价" + oldCost.setScale(2, RoundingMode.HALF_UP) + "→" + newCost);
+                    }
+                }
+            }
+
             ledgerMapper.insert(entry);
 
             snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
