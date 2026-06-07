@@ -41,9 +41,9 @@ public class OutOrderServiceImpl implements OutOrderService {
     public OutOrder getById(Long id) {
         OutOrder order = outOrderMapper.selectById(id);
         if (order == null) throw new BusinessException("出库单不存在");
-        // 填充客户名称
+        // 填充客户名称（忽略软删，保证历史订单仍能显示已删客户名）
         if (order.getCustomerId() != null) {
-            Customer c = customerMapper.selectById(order.getCustomerId());
+            Customer c = customerMapper.selectByIdIgnoreDeleted(order.getCustomerId());
             if (c != null) order.setCustomerName(c.getName());
         }
         return order;
@@ -66,7 +66,8 @@ public class OutOrderServiceImpl implements OutOrderService {
                 .map(OutOrder::getCustomerId).distinct()
                 .collect(java.util.stream.Collectors.toList());
         if (!cids.isEmpty()) {
-            java.util.Map<Long, String> nameMap = customerMapper.selectBatchIds(cids)
+            // 忽略软删，保证历史订单仍能显示已删客户名
+            java.util.Map<Long, String> nameMap = customerMapper.selectByIdsIgnoreDeleted(cids)
                     .stream().collect(java.util.stream.Collectors.toMap(
                             Customer::getId,
                             Customer::getName));
