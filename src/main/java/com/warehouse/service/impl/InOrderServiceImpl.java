@@ -141,36 +141,39 @@ public class InOrderServiceImpl implements InOrderService {
         if (order == null) throw new BusinessException("入库单不存在");
 
         if ("CONFIRMED".equals(order.getStatus())) {
-            List<InOrderItem> items = inOrderItemMapper.selectList(
-                    new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
-            for (InOrderItem item : items) {
-                int actualQty = item.getActualQty() != null ? item.getActualQty() : 0;
-                if (actualQty <= 0) continue;
+            // RETURN_IN 的 confirmInbound() 有意跳过了库存增加（退货视为损坏直接核销），
+            // 所以删除时也不能扣减——库存从未被加进来过。
+            if (!"RETURN_IN".equals(order.getType())) {
+                List<InOrderItem> items = inOrderItemMapper.selectList(
+                        new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
+                for (InOrderItem item : items) {
+                    int actualQty = item.getActualQty() != null ? item.getActualQty() : 0;
+                    if (actualQty <= 0) continue;
 
-                StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
-                BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
-                BigDecimal actualQtyBD = BigDecimal.valueOf(actualQty);
-                if (beforeQty.compareTo(actualQtyBD) < 0)
-                    throw new BusinessException("库存不足以撤销入库，当前库存：" + beforeQty + "，需撤回：" + actualQty);
+                    StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
+                    BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
+                    BigDecimal actualQtyBD = BigDecimal.valueOf(actualQty);
+                    if (beforeQty.compareTo(actualQtyBD) < 0)
+                        throw new BusinessException("库存不足以撤销入库，当前库存：" + beforeQty + "，需撤回：" + actualQty);
 
-                BigDecimal afterQty = beforeQty.subtract(actualQtyBD);
+                    BigDecimal afterQty = beforeQty.subtract(actualQtyBD);
 
-                InventoryLedger entry = new InventoryLedger();
-                entry.setId(UUID.randomUUID().toString());
-                entry.setProductId(item.getProductId());
-                entry.setLocationId(order.getWarehouseId());
-                entry.setChangeQty(new BigDecimal(-actualQty));
-                entry.setType("inbound_cancel");
-                entry.setDocumentNo(order.getOrderNo());
-                // Bug 9 fix: 记录真实操作人，不再写死 "system"
-                entry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
-                entry.setNote("撤销入库单 " + order.getOrderNo());
-                entry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
-                entry.setSynced(1);
-                ledgerMapper.insert(entry);
+                    InventoryLedger entry = new InventoryLedger();
+                    entry.setId(UUID.randomUUID().toString());
+                    entry.setProductId(item.getProductId());
+                    entry.setLocationId(order.getWarehouseId());
+                    entry.setChangeQty(new BigDecimal(-actualQty));
+                    entry.setType("inbound_cancel");
+                    entry.setDocumentNo(order.getOrderNo());
+                    entry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
+                    entry.setNote("撤销入库单 " + order.getOrderNo());
+                    entry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
+                    entry.setSynced(1);
+                    ledgerMapper.insert(entry);
 
-                snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
-                        afterQty, snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0);
+                    snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
+                            afterQty, snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0);
+                }
             }
 
             // Bug 5 fix: 退货入库单被删时，回退关联的退换货单状态，并清理自动生成的损坏记录
