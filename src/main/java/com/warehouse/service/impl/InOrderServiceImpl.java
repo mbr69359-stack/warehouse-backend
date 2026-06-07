@@ -142,7 +142,7 @@ public class InOrderServiceImpl implements InOrderService {
         }
 
         order.setStatus("CONFIRMED");
-        order.setConfirmTime(LocalDateTime.now());
+        order.setConfirmTime(LocalDateTime.now(ZoneOffset.UTC));
         inOrderMapper.updateById(order);
     }
 

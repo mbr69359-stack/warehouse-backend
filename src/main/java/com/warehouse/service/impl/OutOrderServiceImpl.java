@@ -178,8 +178,8 @@ public class OutOrderServiceImpl implements OutOrderService {
         else ledgerType = "outbound";
 
         for (OutOrderItem item : items) {
-            // actualQty 为 null 或 0 时用计划数量兜底，防止补发出库不扣库存
-            int qty = (item.getActualQty() != null && item.getActualQty() > 0) ? item.getActualQty()
+            // actualQty 为 null 时用计划数量兜底；明确填0表示不出库，直接跳过
+            int qty = item.getActualQty() != null ? item.getActualQty()
                     : (item.getQty() != null ? item.getQty() : 0);
             if (qty <= 0) continue;
 
