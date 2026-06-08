@@ -1,12 +1,16 @@
 package com.warehouse.controller;
 
+import com.alibaba.excel.EasyExcel;
 import com.warehouse.common.PageResult;
 import com.warehouse.common.Result;
 import com.warehouse.dto.InventoryCheckDTO;
+import com.warehouse.dto.InventoryImportRow;
 import com.warehouse.entity.Inventory;
 import com.warehouse.service.InventoryService;
 import com.warehouse.vo.InventoryChartItemVO;
 import com.warehouse.vo.InventoryStatsVO;
+import com.warehouse.vo.ImportResultVO;
+import javax.servlet.http.HttpServletResponse;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 import lombok.Data;
@@ -16,7 +20,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 
 @Validated
@@ -67,6 +76,24 @@ public class InventoryController {
             @RequestParam(defaultValue = "all") String type,
             @RequestParam(required = false) Long warehouseId) {
         return Result.success(inventoryService.getChartData(type, warehouseId));
+    }
+
+    @PostMapping("/import")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<ImportResultVO> importOpening(@RequestParam("file") MultipartFile file,
+                                                @AuthenticationPrincipal JwtUserDetails user) throws IOException {
+        return Result.success(inventoryService.importOpening(file, String.valueOf(user.getUserId())));
+    }
+
+    @GetMapping("/import/template")
+    @PreAuthorize("hasRole('ADMIN')")
+    public void downloadTemplate(HttpServletResponse response) throws IOException {
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment;filename=" +
+                URLEncoder.encode("期初库存导入模板.xlsx", StandardCharsets.UTF_8.name()));
+        EasyExcel.write(response.getOutputStream(), InventoryImportRow.class)
+                .sheet("导入模板")
+                .doWrite(Collections.emptyList());
     }
 
     @Data

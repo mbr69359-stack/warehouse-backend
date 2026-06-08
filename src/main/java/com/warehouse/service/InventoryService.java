@@ -5,6 +5,8 @@ import com.warehouse.dto.InventoryCheckDTO;
 import com.warehouse.entity.Inventory;
 import com.warehouse.vo.InventoryChartItemVO;
 import com.warehouse.vo.InventoryStatsVO;
+import com.warehouse.vo.ImportResultVO;
+import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -15,4 +17,5 @@ public interface InventoryService {
     void setAlertQty(Long warehouseId, Long productId, Integer alertQty);
     InventoryStatsVO getStats();
     List<InventoryChartItemVO> getChartData(String type, Long warehouseId);
+    ImportResultVO importOpening(MultipartFile file, String operator);
 }
