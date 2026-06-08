@@ -188,12 +188,14 @@ public class OutOrderServiceImpl implements OutOrderService {
         else if ("REPLACEMENT_OUT".equals(order.getType())) ledgerType = "replacement_out";
         else ledgerType = "outbound";
 
+        java.util.Set<Long> writtenOffProductIds = new java.util.HashSet<>();
         for (OutOrderItem item : items) {
             // actualQty 为 null 时用计划数量兜底；明确填0表示不出库，直接跳过
             int qty = item.getActualQty() != null ? item.getActualQty()
                     : (item.getQty() != null ? item.getQty() : 0);
             if (qty <= 0) continue;
 
+            writtenOffProductIds.add(item.getProductId());
             StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
             BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
             if (beforeQty.compareTo(BigDecimal.valueOf(qty)) < 0) {
@@ -248,14 +250,19 @@ public class OutOrderServiceImpl implements OutOrderService {
             }
         }
 
-        // Bug 7 fix: 所有绑定该出库单的损坏记录统一标为 RESOLVED，不再跳过 qty=0 的商品
+        // 只把实际出库的商品对应损坏记录标为 RESOLVED；
+        // actualQty=0 跳过的商品，解除与本单的绑定，回到 PENDING 等待下次处理
         if ("DAMAGE_OUT".equals(order.getType())) {
             LocalDateTime resolvedAt = LocalDateTime.now();
             List<DamageRecord> damages = damageRecordMapper.selectList(
                     new LambdaQueryWrapper<DamageRecord>().eq(DamageRecord::getOutOrderId, orderId));
             for (DamageRecord d : damages) {
-                d.setStatus("RESOLVED");
-                d.setResolvedAt(resolvedAt);
+                if (writtenOffProductIds.contains(d.getProductId())) {
+                    d.setStatus("RESOLVED");
+                    d.setResolvedAt(resolvedAt);
+                } else {
+                    d.setOutOrderId(null);
+                }
                 damageRecordMapper.updateById(d);
             }
         }

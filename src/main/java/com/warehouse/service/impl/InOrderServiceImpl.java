@@ -211,6 +211,39 @@ public class InOrderServiceImpl implements InOrderService {
 
                     snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
                             afterQty, snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0);
+
+                    // 还原加权平均成本价：只有原进货有进价才需要还原
+                    if (item.getPrice() != null && item.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+                        Product prod = productMapper.selectById(item.getProductId());
+                        if (prod != null && prod.getCostPrice() != null) {
+                            // snapshot 已扣减，此时 selectTotalQtyByProductId 返回撤销后的总量
+                            BigDecimal totalWithout = snapshotMapper.selectTotalQtyByProductId(item.getProductId());
+                            BigDecimal totalWith = totalWithout.add(actualQtyBD);
+                            BigDecimal currentCost = prod.getCostPrice();
+                            if (totalWithout.compareTo(BigDecimal.ZERO) > 0) {
+                                // 反向公式：旧成本 = (当前成本×撤销前总量 - 撤销数量×进价) / 撤销后总量
+                                BigDecimal revertedCost = currentCost.multiply(totalWith)
+                                        .subtract(actualQtyBD.multiply(item.getPrice()))
+                                        .divide(totalWithout, 4, RoundingMode.HALF_UP)
+                                        .setScale(2, RoundingMode.HALF_UP);
+                                if (revertedCost.compareTo(BigDecimal.ZERO) < 0) revertedCost = BigDecimal.ZERO;
+                                if (revertedCost.compareTo(currentCost) != 0) {
+                                    Product toUpdate = new Product();
+                                    toUpdate.setId(prod.getId());
+                                    toUpdate.setCostPrice(revertedCost);
+                                    productMapper.updateById(toUpdate);
+                                    ProductCostHistory history = new ProductCostHistory();
+                                    history.setProductId(item.getProductId());
+                                    history.setOldPrice(currentCost);
+                                    history.setNewPrice(revertedCost);
+                                    history.setChangedAt(LocalDateTime.now());
+                                    history.setOrderNo(order.getOrderNo());
+                                    history.setQtyAdded(-actualQty);
+                                    costHistoryMapper.insert(history);
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
