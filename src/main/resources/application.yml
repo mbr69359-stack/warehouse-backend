@@ -18,7 +18,7 @@ spring:
       schema-locations: classpath:sql/init.sql
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
-    time-zone: Asia/Shanghai
+    time-zone: Africa/Nairobi
 
 mybatis-plus:
   configuration:
