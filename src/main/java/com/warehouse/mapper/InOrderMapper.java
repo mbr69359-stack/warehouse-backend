@@ -16,7 +16,7 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
     InOrder selectByIdForUpdate(@Param("id") Long id);
 
     @Select("SELECT DATE(o.confirm_time) AS date, COUNT(*) AS count, " +
-            "COALESCE(SUM(i.actual_qty * i.price), 0) AS amount " +
+            "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty) * i.price), 0) AS amount " +
             "FROM in_order o LEFT JOIN in_order_item i ON o.id = i.order_id " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 " +
             "AND o.confirm_time BETWEEN #{startDate} AND #{endDate} " +
@@ -34,21 +34,21 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
             "FROM product p " +
             "LEFT JOIN category c ON c.id = p.category_id AND c.deleted = 0 " +
             "LEFT JOIN ( " +
-            "    SELECT ii.product_id, SUM(ii.actual_qty) AS inQty, " +
-            "           SUM(ii.actual_qty * ii.price) AS inAmount " +
+            "    SELECT ii.product_id, SUM(COALESCE(ii.actual_qty, ii.plan_qty)) AS inQty, " +
+            "           SUM(COALESCE(ii.actual_qty, ii.plan_qty) * ii.price) AS inAmount " +
             "    FROM in_order_item ii " +
             "    JOIN in_order io ON io.id = ii.order_id " +
             "    WHERE io.status = 'CONFIRMED' AND io.deleted = 0 " +
-            "      AND io.create_time BETWEEN #{startDate} AND #{endDate} " +
+            "      AND io.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "    GROUP BY ii.product_id " +
             ") i_in ON i_in.product_id = p.id " +
             "LEFT JOIN ( " +
-            "    SELECT oi.product_id, SUM(oi.actual_qty) AS outQty, " +
-            "           SUM(oi.actual_qty * oi.price) AS outAmount " +
+            "    SELECT oi.product_id, SUM(COALESCE(oi.actual_qty, oi.qty)) AS outQty, " +
+            "           SUM(COALESCE(oi.actual_qty, oi.qty) * oi.price) AS outAmount " +
             "    FROM out_order_item oi " +
             "    JOIN out_order oo ON oo.id = oi.order_id " +
             "    WHERE oo.status = 'CONFIRMED' AND oo.deleted = 0 " +
-            "      AND oo.create_time BETWEEN #{startDate} AND #{endDate} " +
+            "      AND oo.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "    GROUP BY oi.product_id " +
             ") i_out ON i_out.product_id = p.id " +
             "WHERE p.deleted = 0 " +
@@ -61,12 +61,12 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
     @Select("<script>" +
             "SELECT s.id AS supplierId, s.name AS supplierName, s.contact, s.phone, " +
             "       COUNT(DISTINCT io.id) AS orderCount, " +
-            "       COALESCE(SUM(ii.actual_qty), 0) AS totalQty, " +
-            "       COALESCE(SUM(ii.actual_qty * ii.price), 0) AS totalAmount " +
+            "       COALESCE(SUM(COALESCE(ii.actual_qty, ii.plan_qty)), 0) AS totalQty, " +
+            "       COALESCE(SUM(COALESCE(ii.actual_qty, ii.plan_qty) * ii.price), 0) AS totalAmount " +
             "FROM supplier s " +
             "JOIN in_order io ON io.supplier_id = s.id " +
             "    AND io.status = 'CONFIRMED' AND io.deleted = 0 " +
-            "    AND io.create_time BETWEEN #{startDate} AND #{endDate} " +
+            "    AND io.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "LEFT JOIN in_order_item ii ON ii.order_id = io.id " +
             "WHERE s.deleted = 0 " +
             "<if test='supplierId != null'>AND s.id = #{supplierId} </if>" +

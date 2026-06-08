@@ -269,7 +269,7 @@ public class OutOrderServiceImpl implements OutOrderService {
             List<OutOrderItem> items = outOrderItemMapper.selectList(
                     new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
             for (OutOrderItem item : items) {
-                int restoreQty = (item.getActualQty() != null && item.getActualQty() > 0) ? item.getActualQty()
+                int restoreQty = item.getActualQty() != null ? item.getActualQty()
                         : (item.getQty() != null ? item.getQty() : 0);
                 if (restoreQty <= 0) continue;
 

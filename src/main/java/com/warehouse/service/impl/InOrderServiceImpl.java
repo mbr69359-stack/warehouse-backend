@@ -173,7 +173,8 @@ public class InOrderServiceImpl implements InOrderService {
                 List<InOrderItem> items = inOrderItemMapper.selectList(
                         new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
                 for (InOrderItem item : items) {
-                    int actualQty = item.getActualQty() != null ? item.getActualQty() : 0;
+                    int actualQty = item.getActualQty() != null ? item.getActualQty()
+                            : (item.getPlanQty() != null ? item.getPlanQty() : 0);
                     if (actualQty <= 0) continue;
 
                     StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
