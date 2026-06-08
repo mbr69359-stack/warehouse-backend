@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS sys_user (
+﻿CREATE TABLE IF NOT EXISTS sys_user (
     id          BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     username    VARCHAR(50)  NOT NULL UNIQUE,
     password    VARCHAR(100) NOT NULL,
@@ -421,3 +421,20 @@ ALTER TABLE out_order ADD COLUMN IF NOT EXISTS exchange_no VARCHAR(50) NULL;
 -- 避免商品改价后历史毛利数据被污染。
 -- =============================================
 ALTER TABLE out_order_item ADD COLUMN IF NOT EXISTS cost_price DECIMAL(12,2) NOT NULL DEFAULT 0.00;
+-- =============================================
+-- v8：费用表（卸货费/配送费/员工工资/销售提成/仓储费/其他）
+-- =============================================
+CREATE TABLE IF NOT EXISTS expense (
+    id           BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    expense_date DATE NOT NULL,
+    warehouse_id BIGINT NOT NULL,
+    type         VARCHAR(50) NOT NULL,
+    amount       DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    note         VARCHAR(500) NULL,
+    operator_id  BIGINT NULL,
+    deleted      SMALLINT NOT NULL DEFAULT 0,
+    create_time  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE INDEX IF NOT EXISTS idx_expense_date_wh ON expense(expense_date, warehouse_id, deleted);

@@ -1,5 +1,6 @@
 package com.warehouse.service.impl;
 
+import com.warehouse.mapper.ExpenseMapper;
 import com.warehouse.mapper.InOrderMapper;
 import com.warehouse.mapper.InventoryLedgerMapper;
 import com.warehouse.mapper.InventoryMapper;
@@ -8,10 +9,11 @@ import com.warehouse.mapper.StockSnapshotMapper;
 import com.warehouse.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +24,7 @@ public class ReportServiceImpl implements ReportService {
     private final InventoryMapper inventoryMapper;
     private final InventoryLedgerMapper inventoryLedgerMapper;
     private final StockSnapshotMapper stockSnapshotMapper;
+    private final ExpenseMapper expenseMapper;
 
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -89,9 +92,44 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public List<Map<String, Object>> grossProfitReport(LocalDate startDate, LocalDate endDate, Long warehouseId) {
-        return outOrderMapper.selectGrossProfitReport(
-            startDate.atStartOfDay().format(DT_FMT),
-            endDate.atTime(23, 59, 59).format(DT_FMT),
-            warehouseId);
+        String start = startDate.atStartOfDay().format(DT_FMT);
+        String end   = endDate.atTime(23, 59, 59).format(DT_FMT);
+        String dateStart = startDate.toString();
+        String dateEnd   = endDate.toString();
+
+        List<Map<String, Object>> salesRows   = outOrderMapper.selectGrossProfitReport(start, end, warehouseId);
+        List<Map<String, Object>> expenseRows = expenseMapper.selectExpenseSummaryByDate(dateStart, dateEnd, warehouseId);
+
+        // 以日期字符串为 key 建索引
+        Map<String, Map<String, Object>> salesByDate = salesRows.stream()
+                .collect(Collectors.toMap(r -> r.get("statDate").toString(), r -> r, (a, b) -> a));
+        Map<String, Map<String, Object>> expByDate = expenseRows.stream()
+                .collect(Collectors.toMap(r -> r.get("expenseDate").toString(), r -> r, (a, b) -> a));
+
+        // 全外联合所有出现过的日期
+        Set<String> allDates = new TreeSet<>();
+        allDates.addAll(salesByDate.keySet());
+        allDates.addAll(expByDate.keySet());
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (String date : allDates) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            Map<String, Object> s = salesByDate.getOrDefault(date, Collections.emptyMap());
+            Map<String, Object> e = expByDate.getOrDefault(date, Collections.emptyMap());
+
+            row.put("statDate",        date);
+            row.put("revenue",         s.getOrDefault("revenue",         BigDecimal.ZERO));
+            row.put("cogs",            s.getOrDefault("cogs",            BigDecimal.ZERO));
+            row.put("replacementLoss", s.getOrDefault("replacementLoss", BigDecimal.ZERO));
+            row.put("damageLoss",      s.getOrDefault("damageLoss",      BigDecimal.ZERO));
+            row.put("unloadingFee",    e.getOrDefault("unloadingFee",    BigDecimal.ZERO));
+            row.put("deliveryFee",     e.getOrDefault("deliveryFee",     BigDecimal.ZERO));
+            row.put("salaryFee",       e.getOrDefault("salaryFee",       BigDecimal.ZERO));
+            row.put("commissionFee",   e.getOrDefault("commissionFee",   BigDecimal.ZERO));
+            row.put("storageFee",      e.getOrDefault("storageFee",      BigDecimal.ZERO));
+            row.put("otherFee",        e.getOrDefault("otherFee",        BigDecimal.ZERO));
+            result.add(row);
+        }
+        return result;
     }
 }
