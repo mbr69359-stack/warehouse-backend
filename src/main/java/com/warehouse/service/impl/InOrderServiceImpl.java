@@ -31,6 +31,7 @@ public class InOrderServiceImpl implements InOrderService {
     private final CustomerReturnMapper customerReturnMapper;
     private final DamageRecordMapper damageRecordMapper;
     private final ProductMapper productMapper;
+    private final ProductCostHistoryMapper costHistoryMapper;
 
     @Override
     public Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId, String startDate, String endDate) {
@@ -131,6 +132,17 @@ public class InOrderServiceImpl implements InOrderService {
                         productMapper.updateById(toUpdate);
                         entry.setNote("进价" + item.getPrice().toPlainString()
                                 + " 均价" + oldCost.setScale(2, RoundingMode.HALF_UP) + "→" + newCost);
+
+                        if (newCost.compareTo(oldCost) != 0) {
+                            ProductCostHistory history = new ProductCostHistory();
+                            history.setProductId(item.getProductId());
+                            history.setOldPrice(oldCost.setScale(2, RoundingMode.HALF_UP));
+                            history.setNewPrice(newCost);
+                            history.setChangedAt(LocalDateTime.now());
+                            history.setOrderNo(order.getOrderNo());
+                            history.setQtyAdded(qty);
+                            costHistoryMapper.insert(history);
+                        }
                     }
                 }
             }

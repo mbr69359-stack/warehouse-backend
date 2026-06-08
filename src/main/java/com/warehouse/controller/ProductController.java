@@ -4,7 +4,10 @@ import com.warehouse.common.PageResult;
 import com.warehouse.common.Result;
 import com.warehouse.dto.ProductDTO;
 import com.warehouse.entity.Product;
+import com.warehouse.entity.ProductCostHistory;
+import com.warehouse.mapper.ProductCostHistoryMapper;
 import com.warehouse.service.ProductService;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -15,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class ProductController {
     private final ProductService productService;
+    private final ProductCostHistoryMapper costHistoryMapper;
 
     @GetMapping
     public Result<PageResult<Product>> page(
@@ -41,5 +45,10 @@ public class ProductController {
     @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> delete(@PathVariable Long id) {
         productService.delete(id); return Result.success();
+    }
+
+    @GetMapping("/{id}/cost-history")
+    public Result<List<ProductCostHistory>> costHistory(@PathVariable Long id) {
+        return Result.success(costHistoryMapper.selectByProductId(id));
     }
 }

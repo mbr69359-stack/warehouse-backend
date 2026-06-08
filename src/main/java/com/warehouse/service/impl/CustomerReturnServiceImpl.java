@@ -31,6 +31,7 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
     private final InOrderMapper inOrderMapper;
     private final InOrderItemMapper inOrderItemMapper;
     private final DamageRecordMapper damageRecordMapper;
+    private final ProductMapper productMapper;
 
     @Override
     public Page<CustomerReturn> page(int current, int size, Long warehouseId) {
@@ -87,6 +88,8 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
             outItem.setProductId(item.getProductId());
             outItem.setQty(item.getQty());
             outItem.setPrice(BigDecimal.ZERO);
+            Product prod = productMapper.selectById(item.getProductId());
+            outItem.setCostPrice(prod != null && prod.getCostPrice() != null ? prod.getCostPrice() : BigDecimal.ZERO);
             outOrderItemMapper.insert(outItem);
         }
 

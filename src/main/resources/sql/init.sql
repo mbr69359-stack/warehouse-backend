@@ -438,3 +438,18 @@ CREATE TABLE IF NOT EXISTS expense (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE INDEX IF NOT EXISTS idx_expense_date_wh ON expense(expense_date, warehouse_id, deleted);
+
+-- =============================================
+-- v9：商品成本价变更历史
+-- =============================================
+CREATE TABLE IF NOT EXISTS product_cost_history (
+    id          BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    product_id  BIGINT NOT NULL,
+    old_price   DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    new_price   DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    changed_at  DATETIME NOT NULL,
+    order_no    VARCHAR(30) NULL,
+    qty_added   INT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE INDEX IF NOT EXISTS idx_cost_history_product ON product_cost_history(product_id, changed_at);
