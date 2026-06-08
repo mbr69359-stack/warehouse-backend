@@ -12,4 +12,5 @@ public class WarehouseDTO {
     private Long managerId;
     private Integer status;
     private String remark;
+    private String type; // BOX / PIECE，默认 BOX
 }

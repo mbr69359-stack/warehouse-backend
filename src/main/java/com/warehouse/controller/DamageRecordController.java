@@ -4,6 +4,7 @@ import com.warehouse.common.PageResult;
 import com.warehouse.common.Result;
 import com.warehouse.config.JwtUserDetails;
 import com.warehouse.dto.DamageRecordDTO;
+import com.warehouse.dto.DamageTransferDTO;
 import com.warehouse.entity.DamageRecord;
 import com.warehouse.service.DamageRecordService;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,16 @@ public class DamageRecordController {
                                @AuthenticationPrincipal UserDetails user) {
         String username = ((JwtUserDetails) user).getUsername();
         return Result.success(damageRecordService.create(dto, username));
+    }
+
+    @PostMapping("/{id}/transfer")
+    @PreAuthorize("isAuthenticated()")
+    public Result<Void> transfer(@PathVariable Long id,
+                                 @RequestBody @Validated DamageTransferDTO dto,
+                                 @AuthenticationPrincipal UserDetails user) {
+        String username = ((JwtUserDetails) user).getUsername();
+        damageRecordService.transfer(id, dto, username);
+        return Result.success();
     }
 
     @DeleteMapping("/{id}")

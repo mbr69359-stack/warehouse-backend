@@ -28,10 +28,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 @RequiredArgsConstructor
@@ -63,6 +65,8 @@ public class InventoryServiceImpl implements InventoryService {
         if (CHECKING.putIfAbsent(warehouseId, Boolean.TRUE) != null) {
             throw new BusinessException("该仓库正在盘点中，请等待操作完成后再提交");
         }
+        String checkNo = "CK" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
+                + String.format("%03d", ThreadLocalRandom.current().nextInt(1000));
         try {
             for (InventoryCheckDTO.CheckItem ci : dto.getItems()) {
                 int actualQty = ci.getActualQty() != null ? ci.getActualQty() : 0;
@@ -78,6 +82,7 @@ public class InventoryServiceImpl implements InventoryService {
                     ledger.setLocationId(warehouseId);
                     ledger.setChangeQty(BigDecimal.valueOf(delta));
                     ledger.setType("adjust");
+                    ledger.setDocumentNo(checkNo);
                     ledger.setOperator(operator != null ? operator : "");
                     ledger.setNote(dto.getRemark());
                     ledger.setOccurredAt(LocalDateTime.now());

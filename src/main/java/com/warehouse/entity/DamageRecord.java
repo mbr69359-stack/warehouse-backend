@@ -20,6 +20,10 @@ public class DamageRecord {
     private Long outOrderId;
     private String source;   // MANUAL / RETURN_INBOUND
     private Long sourceId;
+    private java.math.BigDecimal costDeduction;
+    private Integer goodQty;
+    private Long transferWarehouseId;
+    private java.math.BigDecimal transferPrice;
 
     @TableField(exist = false)
     private String productName;
@@ -27,4 +31,8 @@ public class DamageRecord {
     private String skuCode;
     @TableField(exist = false)
     private String warehouseName;
+    @TableField(exist = false)
+    private java.math.BigDecimal productCostPrice;
+    @TableField(exist = false)
+    private Integer productQtyPerBox;
 }

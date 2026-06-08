@@ -28,6 +28,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         w.setName(dto.getName()); w.setAddress(dto.getAddress());
         w.setManagerId(dto.getManagerId()); w.setRemark(dto.getRemark());
         w.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
+        w.setType(dto.getType() != null ? dto.getType() : "BOX");
         warehouseMapper.insert(w);
     }
 
@@ -38,6 +39,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         w.setName(dto.getName()); w.setAddress(dto.getAddress());
         w.setManagerId(dto.getManagerId()); w.setRemark(dto.getRemark());
         if (dto.getStatus() != null) w.setStatus(dto.getStatus());
+        if (dto.getType() != null) w.setType(dto.getType());
         warehouseMapper.updateById(w);
     }
 

@@ -3,20 +3,28 @@ package com.warehouse.service.impl;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.common.BusinessException;
 import com.warehouse.dto.DamageRecordDTO;
-import com.warehouse.entity.DamageRecord;
-import com.warehouse.mapper.DamageRecordMapper;
+import com.warehouse.dto.DamageTransferDTO;
+import com.warehouse.entity.*;
+import com.warehouse.mapper.*;
 import com.warehouse.service.DamageRecordService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class DamageRecordServiceImpl implements DamageRecordService {
 
     private final DamageRecordMapper damageRecordMapper;
+    private final ProductMapper productMapper;
+    private final WarehouseMapper warehouseMapper;
+    private final StockSnapshotMapper snapshotMapper;
+    private final InventoryLedgerMapper ledgerMapper;
 
     @Override
     public Page<DamageRecord> page(int current, int size, String status, Long warehouseId) {
@@ -53,5 +61,95 @@ public class DamageRecordServiceImpl implements DamageRecordService {
         if (record == null) throw new BusinessException("损坏记录不存在");
         if ("RESOLVED".equals(record.getStatus())) throw new BusinessException("已核销的记录不能删除");
         damageRecordMapper.deleteById(id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void transfer(Long damageRecordId, DamageTransferDTO dto, String operator) {
+        // 行锁加载破损记录，防并发双重调拨
+        DamageRecord record = damageRecordMapper.selectByIdForUpdate(damageRecordId);
+        if (record == null) throw new BusinessException("破损记录不存在");
+        if (!"PENDING".equals(record.getStatus())) throw new BusinessException("该破损记录已处理");
+
+        Product product = productMapper.selectById(record.getProductId());
+        if (product == null) throw new BusinessException("商品不存在");
+        if (product.getQtyPerBox() == null || product.getQtyPerBox() <= 0)
+            throw new BusinessException("请先在商品管理中设置每箱数量");
+
+        String targetType = warehouseMapper.selectTypeById(dto.getTargetWarehouseId());
+        if (!"PIECE".equals(targetType))
+            throw new BusinessException("目标仓库必须是按个仓库（PIECE）");
+
+        int damagedQty = record.getQty();
+        int qtyPerBox  = product.getQtyPerBox();
+        int goodQty    = qtyPerBox - damagedQty;
+        if (goodQty < 0)
+            throw new BusinessException("破损数(" + damagedQty + ")超过整箱数量(" + qtyPerBox + ")");
+
+        BigDecimal costPrice     = product.getCostPrice() != null ? product.getCostPrice() : BigDecimal.ZERO;
+        BigDecimal costDeduction = BigDecimal.valueOf(damagedQty).multiply(costPrice);
+        String docNo             = "DAMAGE-" + record.getId();
+        LocalDateTime now        = LocalDateTime.now();
+
+        // 扣减 BOX 仓库快照（整箱）
+        StockSnapshot boxSnap       = snapshotMapper.selectOneForUpdate(record.getProductId(), record.getWarehouseId());
+        BigDecimal    boxCurrentQty = boxSnap != null ? boxSnap.getCurrentQty() : BigDecimal.ZERO;
+        if (boxCurrentQty.compareTo(BigDecimal.valueOf(qtyPerBox)) < 0)
+            throw new BusinessException("库存不足，当前库存" + boxCurrentQty + "个，需扣减" + qtyPerBox + "个");
+        snapshotMapper.upsert(record.getProductId(), record.getWarehouseId(),
+                boxCurrentQty.subtract(BigDecimal.valueOf(qtyPerBox)),
+                boxSnap.getAlertQty() != null ? boxSnap.getAlertQty() : 0);
+
+        // 流水账：damage(-damagedQty)
+        ledgerMapper.insert(buildLedger(record.getProductId(), record.getWarehouseId(),
+                BigDecimal.valueOf(-damagedQty), "damage", docNo, operator, now));
+
+        Long resolvedTransferWarehouseId = null;
+        BigDecimal resolvedTransferPrice = null;
+
+        if (goodQty > 0) {
+            // 流水账：transfer_out(-goodQty) 来自 BOX 仓库
+            ledgerMapper.insert(buildLedger(record.getProductId(), record.getWarehouseId(),
+                    BigDecimal.valueOf(-goodQty), "transfer_out", docNo, operator, now));
+
+            // 增加 PIECE 仓库快照
+            StockSnapshot pieceSnap       = snapshotMapper.selectOneForUpdate(record.getProductId(), dto.getTargetWarehouseId());
+            BigDecimal    pieceCurrentQty = pieceSnap != null ? pieceSnap.getCurrentQty() : BigDecimal.ZERO;
+            snapshotMapper.upsert(record.getProductId(), dto.getTargetWarehouseId(),
+                    pieceCurrentQty.add(BigDecimal.valueOf(goodQty)),
+                    pieceSnap != null && pieceSnap.getAlertQty() != null ? pieceSnap.getAlertQty() : 0);
+
+            // 流水账：transfer_in(+goodQty) 到 PIECE 仓库
+            ledgerMapper.insert(buildLedger(record.getProductId(), dto.getTargetWarehouseId(),
+                    BigDecimal.valueOf(goodQty), "transfer_in", docNo, operator, now));
+
+            resolvedTransferWarehouseId = dto.getTargetWarehouseId();
+            resolvedTransferPrice       = dto.getTransferPrice();
+        }
+
+        // 更新破损记录为 RESOLVED
+        record.setStatus("RESOLVED");
+        record.setCostDeduction(costDeduction);
+        record.setGoodQty(goodQty);
+        record.setTransferWarehouseId(resolvedTransferWarehouseId);
+        record.setTransferPrice(resolvedTransferPrice);
+        record.setResolvedAt(now);
+        damageRecordMapper.updateById(record);
+    }
+
+    private InventoryLedger buildLedger(Long productId, Long locationId, BigDecimal changeQty,
+                                        String type, String docNo, String operator, LocalDateTime now) {
+        InventoryLedger l = new InventoryLedger();
+        l.setId(UUID.randomUUID().toString());
+        l.setProductId(productId);
+        l.setLocationId(locationId);
+        l.setChangeQty(changeQty);
+        l.setType(type);
+        l.setDocumentNo(docNo);
+        l.setOperator(operator);
+        l.setQtyUnit("PIECE");
+        l.setOccurredAt(now);
+        l.setSynced(1);
+        return l;
     }
 }

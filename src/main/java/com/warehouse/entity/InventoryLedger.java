@@ -48,6 +48,8 @@ public class InventoryLedger {
 
     private LocalDateTime createdAt;
 
+    private String qtyUnit; // PIECE / BOX
+
     @TableField(exist = false)
     private String productName;
 }

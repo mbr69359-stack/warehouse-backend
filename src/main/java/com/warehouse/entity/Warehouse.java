@@ -14,6 +14,7 @@ public class Warehouse {
     private Long managerId;
     private Integer status;
     private String remark;
+    private String type; // BOX / PIECE
     @TableLogic
     private Integer deleted;
     @TableField(fill = FieldFill.INSERT)

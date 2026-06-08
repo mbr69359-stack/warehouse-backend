@@ -13,7 +13,8 @@ import java.util.List;
 public interface DamageRecordMapper extends BaseMapper<DamageRecord> {
 
     @Select("<script>" +
-            "SELECT d.*, p.name as product_name, p.sku_code, w.name as warehouse_name " +
+            "SELECT d.*, p.name as product_name, p.sku_code, w.name as warehouse_name, " +
+            "  p.cost_price as product_cost_price, p.qty_per_box as product_qty_per_box " +
             "FROM damage_record d " +
             "JOIN product p ON p.id = d.product_id " +
             "JOIN warehouse w ON w.id = d.warehouse_id " +
@@ -27,7 +28,8 @@ public interface DamageRecordMapper extends BaseMapper<DamageRecord> {
                                        @Param("warehouseId") Long warehouseId);
 
     @Select("<script>" +
-            "SELECT d.*, p.name as product_name, p.sku_code, w.name as warehouse_name " +
+            "SELECT d.*, p.name as product_name, p.sku_code, w.name as warehouse_name, " +
+            "  p.cost_price as product_cost_price, p.qty_per_box as product_qty_per_box " +
             "FROM damage_record d " +
             "JOIN product p ON p.id = d.product_id " +
             "JOIN warehouse w ON w.id = d.warehouse_id " +
@@ -43,4 +45,7 @@ public interface DamageRecordMapper extends BaseMapper<DamageRecord> {
             "<if test='warehouseId != null'>AND warehouse_id = #{warehouseId} </if>" +
             "</script>")
     long countPendingAvailable(@Param("warehouseId") Long warehouseId);
+
+    @Select("SELECT * FROM damage_record WHERE id = #{id} FOR UPDATE")
+    DamageRecord selectByIdForUpdate(@Param("id") Long id);
 }

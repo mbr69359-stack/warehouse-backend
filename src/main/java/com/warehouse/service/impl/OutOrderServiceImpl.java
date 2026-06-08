@@ -182,6 +182,19 @@ public class OutOrderServiceImpl implements OutOrderService {
             }
         }
 
+        // BUG-1 fix: 损坏出库不允许部分核销，actualQty 必须等于计划数量（或填 0 整条跳过）
+        if ("DAMAGE_OUT".equals(order.getType())) {
+            for (OutOrderItem item : items) {
+                int planned = item.getQty() != null ? item.getQty() : 0;
+                int actual  = item.getActualQty() != null ? item.getActualQty() : planned;
+                if (actual != 0 && actual != planned) {
+                    throw new BusinessException("损坏出库不支持部分核销，商品ID " + item.getProductId()
+                            + " 计划 " + planned + " 件，实际填写 " + actual + " 件。"
+                            + "如需调整，请删除本单重新按实际损坏数量建记录。");
+                }
+            }
+        }
+
         String ledgerType;
         if ("TRANSFER".equals(order.getType())) ledgerType = "transfer";
         else if ("DAMAGE_OUT".equals(order.getType())) ledgerType = "damage_out";
@@ -196,6 +209,12 @@ public class OutOrderServiceImpl implements OutOrderService {
             if (qty <= 0) continue;
 
             writtenOffProductIds.add(item.getProductId());
+            // BUG-2 fix: 确认出库时重新读取最新成本价，避免草稿期间成本变化导致毛利偏差
+            com.warehouse.entity.Product latestProd = productMapper.selectById(item.getProductId());
+            if (latestProd != null && latestProd.getCostPrice() != null) {
+                item.setCostPrice(latestProd.getCostPrice());
+                outOrderItemMapper.updateById(item);
+            }
             StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
             BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
             if (beforeQty.compareTo(BigDecimal.valueOf(qty)) < 0) {

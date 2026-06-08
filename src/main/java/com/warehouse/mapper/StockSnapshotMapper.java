@@ -81,6 +81,12 @@ public interface StockSnapshotMapper {
             "</script>")
     List<Map<String, Object>> selectStocktakeReport(@Param("warehouseId") Long warehouseId);
 
+    /** 查某商品在所有 BOX 仓库的快照（迁移用）*/
+    @Select("SELECT ss.* FROM stock_snapshot ss " +
+            "JOIN warehouse w ON w.id = ss.location_id " +
+            "WHERE ss.product_id = #{productId} AND w.type = 'BOX' FOR UPDATE")
+    List<StockSnapshot> selectBoxWarehouseSnapshotsForUpdate(@Param("productId") Long productId);
+
     /** 从 inventory 表同步 alert_qty 到快照（rebuildSnapshot 后调用） */
     @Update("UPDATE stock_snapshot s " +
             "JOIN inventory i ON i.product_id = s.product_id AND i.warehouse_id = s.location_id " +

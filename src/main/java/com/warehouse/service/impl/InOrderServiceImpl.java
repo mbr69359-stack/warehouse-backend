@@ -32,6 +32,7 @@ public class InOrderServiceImpl implements InOrderService {
     private final DamageRecordMapper damageRecordMapper;
     private final ProductMapper productMapper;
     private final ProductCostHistoryMapper costHistoryMapper;
+    private final WarehouseMapper warehouseMapper;
 
     @Override
     public Page<InOrder> page(int current, int size, String status, Long warehouseId, Long supplierId, String startDate, String endDate) {
@@ -93,10 +94,44 @@ public class InOrderServiceImpl implements InOrderService {
             }
         }
 
+        String warehouseType = warehouseMapper.selectTypeById(order.getWarehouseId());
+        boolean isBoxWarehouse = "BOX".equals(warehouseType);
+
         for (InOrderItem item : items) {
-            int qty = item.getActualQty() != null ? item.getActualQty()
+            int rawQty = item.getActualQty() != null ? item.getActualQty()
                     : (item.getPlanQty() != null ? item.getPlanQty() : 0);
-            if (qty <= 0) continue;
+            if (rawQty <= 0) continue;
+
+            // BOX仓且已设qtyPerBox：换算为个数；未设：保留箱数并标记BOX单位
+            Product productForUnit = productMapper.selectById(item.getProductId());
+            boolean hasQtyPerBox = productForUnit != null
+                    && productForUnit.getQtyPerBox() != null
+                    && productForUnit.getQtyPerBox() > 0;
+            int qtyPerBoxVal = hasQtyPerBox ? productForUnit.getQtyPerBox() : 0;
+
+            int qty;
+            String ledgerQtyUnit;
+            if (isBoxWarehouse) {
+                if (hasQtyPerBox) {
+                    qty = rawQty * qtyPerBoxVal;
+                    ledgerQtyUnit = "PIECE";
+                } else {
+                    qty = rawQty;
+                    ledgerQtyUnit = "BOX";
+                }
+            } else {
+                qty = rawQty;
+                ledgerQtyUnit = "PIECE";
+            }
+
+            // item.price 统一视作每个成本价（BOX仓且已设qtyPerBox：用户填的是每箱价，÷qtyPerBox换算）
+            if (isBoxWarehouse && hasQtyPerBox && qtyPerBoxVal > 1
+                    && item.getPrice() != null
+                    && item.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+                item.setPrice(item.getPrice().divide(
+                        BigDecimal.valueOf(qtyPerBoxVal), 4, RoundingMode.HALF_UP));
+                inOrderItemMapper.updateById(item);
+            }
 
             // Bug 2 fix: 加行锁，防止并发写入 snapshot 时数字互相覆盖
             StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
@@ -111,6 +146,7 @@ public class InOrderServiceImpl implements InOrderService {
             entry.setType("inbound");
             entry.setDocumentNo(order.getOrderNo());
             entry.setOperator(String.valueOf(operatorId));
+            entry.setQtyUnit(ledgerQtyUnit);
             entry.setOccurredAt(LocalDateTime.now());
             entry.setSynced(1);
 

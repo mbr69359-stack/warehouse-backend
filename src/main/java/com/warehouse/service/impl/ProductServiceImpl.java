@@ -4,15 +4,22 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.dto.ProductDTO;
+import com.warehouse.entity.InventoryLedger;
 import com.warehouse.entity.Product;
+import com.warehouse.entity.StockSnapshot;
+import com.warehouse.mapper.InventoryLedgerMapper;
 import com.warehouse.mapper.ProductMapper;
 import com.warehouse.mapper.StockSnapshotMapper;
 import com.warehouse.common.BusinessException;
 import com.warehouse.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +27,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductMapper productMapper;
     private final StockSnapshotMapper stockSnapshotMapper;
+    private final InventoryLedgerMapper ledgerMapper;
 
     @Override
     public Page<Product> page(int current, int size, String name, Long categoryId) {
@@ -42,14 +50,52 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public void update(ProductDTO dto) {
         Product p = productMapper.selectById(dto.getId());
         if (p == null) throw new BusinessException("商品不存在");
+
+        boolean qtyPerBoxChanged = dto.getQtyPerBox() != null
+                && dto.getQtyPerBox() > 0
+                && !dto.getQtyPerBox().equals(p.getQtyPerBox());
+
         p.setName(dto.getName()); p.setCategoryId(dto.getCategoryId());
         p.setUnit(dto.getUnit()); p.setPrice(dto.getPrice());
         p.setImage(dto.getImage()); p.setRemark(dto.getRemark());
         if (dto.getStatus() != null) p.setStatus(dto.getStatus());
+        if (dto.getQtyPerBox() != null && dto.getQtyPerBox() > 0)
+            p.setQtyPerBox(dto.getQtyPerBox());
         productMapper.updateById(p);
+
+        if (qtyPerBoxChanged) {
+            migrateBoxInventoryToPiece(p.getId(), dto.getQtyPerBox());
+        }
+    }
+
+    private void migrateBoxInventoryToPiece(Long productId, int qtyPerBox) {
+        List<StockSnapshot> snaps = stockSnapshotMapper.selectBoxWarehouseSnapshotsForUpdate(productId);
+        for (StockSnapshot snap : snaps) {
+            BigDecimal oldQty = snap.getCurrentQty() != null ? snap.getCurrentQty() : BigDecimal.ZERO;
+            BigDecimal delta = oldQty.multiply(BigDecimal.valueOf(qtyPerBox - 1));
+            if (delta.compareTo(BigDecimal.ZERO) == 0) continue;
+
+            InventoryLedger entry = new InventoryLedger();
+            entry.setId(UUID.randomUUID().toString());
+            entry.setProductId(productId);
+            entry.setLocationId(snap.getLocationId());
+            entry.setChangeQty(delta);
+            entry.setType("unit_migration");
+            entry.setQtyUnit("PIECE");
+            entry.setNote("单位迁移：1箱=" + qtyPerBox + "个，原qty=" + oldQty.intValue() + "箱");
+            entry.setOccurredAt(LocalDateTime.now());
+            entry.setSynced(1);
+            entry.setCreatedAt(LocalDateTime.now());
+            ledgerMapper.insert(entry);
+
+            BigDecimal newQty = oldQty.multiply(BigDecimal.valueOf(qtyPerBox));
+            stockSnapshotMapper.upsert(productId, snap.getLocationId(), newQty,
+                    snap.getAlertQty() != null ? snap.getAlertQty() : 0);
+        }
     }
 
     @Override

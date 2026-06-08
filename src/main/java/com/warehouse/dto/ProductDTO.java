@@ -23,4 +23,5 @@ public class ProductDTO {
     private String image;
     private String remark;
     private Integer status;
+    private Integer qtyPerBox;  // 每箱个数
 }
