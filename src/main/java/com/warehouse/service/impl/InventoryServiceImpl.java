@@ -162,10 +162,10 @@ public class InventoryServiceImpl implements InventoryService {
             int rowNum = i + 2;
             InventoryImportRow row = rows.get(i);
 
-            if (row.getSkuCode() == null || row.getSkuCode().isBlank()) {
+            if (row.getSkuCode() == null || row.getSkuCode().trim().isEmpty()) {
                 failDetails.add("第" + rowNum + "行: SKU码不能为空"); failCount++; continue;
             }
-            if (row.getWarehouseName() == null || row.getWarehouseName().isBlank()) {
+            if (row.getWarehouseName() == null || row.getWarehouseName().trim().isEmpty()) {
                 failDetails.add("第" + rowNum + "行: 仓库名称不能为空"); failCount++; continue;
             }
             if (row.getQty() == null || row.getQty() <= 0) {
