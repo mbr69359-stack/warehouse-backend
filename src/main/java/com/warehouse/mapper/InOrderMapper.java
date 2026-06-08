@@ -15,12 +15,12 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
     @Select("SELECT * FROM in_order WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     InOrder selectByIdForUpdate(@Param("id") Long id);
 
-    @Select("SELECT DATE(o.create_time) AS date, COUNT(*) AS count, " +
+    @Select("SELECT DATE(o.confirm_time) AS date, COUNT(*) AS count, " +
             "COALESCE(SUM(i.actual_qty * i.price), 0) AS amount " +
             "FROM in_order o LEFT JOIN in_order_item i ON o.id = i.order_id " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 " +
-            "AND o.create_time BETWEEN #{startDate} AND #{endDate} " +
-            "GROUP BY DATE(o.create_time) ORDER BY date")
+            "AND o.confirm_time BETWEEN #{startDate} AND #{endDate} " +
+            "GROUP BY DATE(o.confirm_time) ORDER BY date")
     List<Map<String, Object>> selectDailyReport(
             @Param("startDate") String startDate,
             @Param("endDate") String endDate);

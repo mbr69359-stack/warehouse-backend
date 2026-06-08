@@ -14,19 +14,19 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
     @Select("SELECT * FROM out_order WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     OutOrder selectByIdForUpdate(@Param("id") Long id);
 
-    @Select("SELECT DATE(o.create_time) AS date, COUNT(*) AS count, " +
-            "COALESCE(SUM(i.qty * i.price), 0) AS amount " +
+    @Select("SELECT DATE(o.confirm_time) AS date, COUNT(*) AS count, " +
+            "COALESCE(SUM(COALESCE(i.actual_qty, i.qty) * i.price), 0) AS amount " +
             "FROM out_order o LEFT JOIN out_order_item i ON o.id = i.order_id " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 " +
-            "AND o.create_time BETWEEN #{startDate} AND #{endDate} " +
-            "GROUP BY DATE(o.create_time) ORDER BY date")
+            "AND o.confirm_time BETWEEN #{startDate} AND #{endDate} " +
+            "GROUP BY DATE(o.confirm_time) ORDER BY date")
     List<Map<String, Object>> selectDailyReport(
             @Param("startDate") String startDate,
             @Param("endDate") String endDate);
 
     @Select("SELECT " +
             "COALESCE(SUM(CASE WHEN DATE(o.create_time) = CURDATE() THEN COALESCE(i.actual_qty, i.qty) ELSE 0 END), 0) AS todayOutQty, " +
-            "COALESCE(SUM(CASE WHEN YEAR(o.create_time) = YEAR(CURDATE()) AND MONTH(o.create_time) = MONTH(CURDATE()) THEN COALESCE(i.actual_qty, i.qty) * COALESCE(i.price, 0) ELSE 0 END), 0) AS monthSalesAmount " +
+            "COALESCE(SUM(CASE WHEN o.type = 'SALE' AND YEAR(o.create_time) = YEAR(CURDATE()) AND MONTH(o.create_time) = MONTH(CURDATE()) THEN COALESCE(i.actual_qty, i.qty) * COALESCE(i.price, 0) ELSE 0 END), 0) AS monthSalesAmount " +
             "FROM out_order o LEFT JOIN out_order_item i ON o.id = i.order_id " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0")
     Map<String, Object> selectDashboardStats();
@@ -53,8 +53,8 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
     @Select("<script>" +
             "SELECT c.id AS customerId, c.name AS customerName, c.contact, c.phone, " +
             "       COUNT(DISTINCT oo.id) AS orderCount, " +
-            "       COALESCE(SUM(oi.actual_qty), 0) AS totalQty, " +
-            "       COALESCE(SUM(oi.actual_qty * oi.price), 0) AS totalAmount " +
+            "       COALESCE(SUM(COALESCE(oi.actual_qty, oi.qty)), 0) AS totalQty, " +
+            "       COALESCE(SUM(COALESCE(oi.actual_qty, oi.qty) * oi.price), 0) AS totalAmount " +
             "FROM customer c " +
             "JOIN out_order oo ON oo.customer_id = c.id " +
             "    AND oo.status = 'CONFIRMED' AND oo.deleted = 0 " +

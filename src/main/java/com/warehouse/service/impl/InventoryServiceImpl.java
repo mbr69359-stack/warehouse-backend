@@ -158,6 +158,29 @@ public class InventoryServiceImpl implements InventoryService {
         int successCount = 0, failCount = 0;
         List<String> failDetails = new ArrayList<>();
 
+        // 防重复导入：检查文件中涉及的仓库是否已有期初流水，避免误操作导致库存翻倍
+        java.util.Set<String> warehouseNamesInFile = new java.util.HashSet<>();
+        for (InventoryImportRow row : rows) {
+            if (row.getWarehouseName() != null && !row.getWarehouseName().trim().isEmpty())
+                warehouseNamesInFile.add(row.getWarehouseName().trim());
+        }
+        List<String> duplicateWarehouses = new ArrayList<>();
+        for (String whName : warehouseNamesInFile) {
+            Warehouse wh = warehouseMapper.selectOne(
+                    new LambdaQueryWrapper<Warehouse>().eq(Warehouse::getName, whName));
+            if (wh != null) {
+                long count = inventoryLedgerMapper.selectCount(
+                        new LambdaQueryWrapper<InventoryLedger>()
+                                .eq(InventoryLedger::getType, "opening")
+                                .eq(InventoryLedger::getLocationId, wh.getId()));
+                if (count > 0) duplicateWarehouses.add(whName);
+            }
+        }
+        if (!duplicateWarehouses.isEmpty()) {
+            throw new BusinessException("仓库「" + String.join("」「", duplicateWarehouses) +
+                    "」已有期初库存记录，重复导入会累加库存。如需重新导入请先联系管理员清除旧期初数据。");
+        }
+
         for (int i = 0; i < rows.size(); i++) {
             int rowNum = i + 2;
             InventoryImportRow row = rows.get(i);

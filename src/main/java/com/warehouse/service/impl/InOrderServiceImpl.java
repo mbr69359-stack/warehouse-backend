@@ -65,7 +65,7 @@ public class InOrderServiceImpl implements InOrderService {
                 item.setOrderId(order.getId());
                 item.setProductId(i.getProductId());
                 item.setPlanQty(i.getPlanQty() != null ? i.getPlanQty() : 0);
-                item.setActualQty(i.getActualQty() != null ? i.getActualQty() : 0);
+                item.setActualQty(i.getActualQty());
                 item.setPrice(i.getPrice());
                 inOrderItemMapper.insert(item);
             }
@@ -94,7 +94,8 @@ public class InOrderServiceImpl implements InOrderService {
         }
 
         for (InOrderItem item : items) {
-            int qty = item.getActualQty() != null ? item.getActualQty() : 0;
+            int qty = item.getActualQty() != null ? item.getActualQty()
+                    : (item.getPlanQty() != null ? item.getPlanQty() : 0);
             if (qty <= 0) continue;
 
             // Bug 2 fix: 加行锁，防止并发写入 snapshot 时数字互相覆盖
