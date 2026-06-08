@@ -15,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -199,7 +198,7 @@ public class OutOrderServiceImpl implements OutOrderService {
             outEntry.setType(ledgerType);
             outEntry.setDocumentNo(order.getOrderNo());
             outEntry.setOperator(String.valueOf(operatorId));
-            outEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
+            outEntry.setOccurredAt(LocalDateTime.now());
             outEntry.setSynced(1);
             if ("DAMAGE_OUT".equals(order.getType()) || "REPLACEMENT_OUT".equals(order.getType())) {
                 com.warehouse.entity.Product p = productMapper.selectById(item.getProductId());
@@ -227,7 +226,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                 inEntry.setDocumentNo(order.getOrderNo());
                 inEntry.setOperator(String.valueOf(operatorId));
                 inEntry.setNote("调拨自仓库 " + order.getWarehouseId());
-                inEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
+                inEntry.setOccurredAt(LocalDateTime.now());
                 inEntry.setSynced(1);
                 ledgerMapper.insert(inEntry);
 
@@ -239,7 +238,7 @@ public class OutOrderServiceImpl implements OutOrderService {
 
         // Bug 7 fix: 所有绑定该出库单的损坏记录统一标为 RESOLVED，不再跳过 qty=0 的商品
         if ("DAMAGE_OUT".equals(order.getType())) {
-            LocalDateTime resolvedAt = LocalDateTime.now(ZoneOffset.UTC);
+            LocalDateTime resolvedAt = LocalDateTime.now();
             List<DamageRecord> damages = damageRecordMapper.selectList(
                     new LambdaQueryWrapper<DamageRecord>().eq(DamageRecord::getOutOrderId, orderId));
             for (DamageRecord d : damages) {
@@ -250,7 +249,7 @@ public class OutOrderServiceImpl implements OutOrderService {
         }
 
         order.setStatus("CONFIRMED");
-        order.setConfirmTime(LocalDateTime.now(ZoneOffset.UTC));
+        order.setConfirmTime(LocalDateTime.now());
         outOrderMapper.updateById(order);
     }
 
@@ -287,7 +286,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                 // Bug 9 fix: 记录真实操作人
                 cancelEntry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
                 cancelEntry.setNote("撤销出库单 " + order.getOrderNo());
-                cancelEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
+                cancelEntry.setOccurredAt(LocalDateTime.now());
                 cancelEntry.setSynced(1);
                 ledgerMapper.insert(cancelEntry);
 
@@ -313,7 +312,7 @@ public class OutOrderServiceImpl implements OutOrderService {
                     transferCancelEntry.setDocumentNo(order.getOrderNo());
                     transferCancelEntry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
                     transferCancelEntry.setNote("撤销调拨，还原至仓库 " + order.getWarehouseId());
-                    transferCancelEntry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
+                    transferCancelEntry.setOccurredAt(LocalDateTime.now());
                     transferCancelEntry.setSynced(1);
                     ledgerMapper.insert(transferCancelEntry);
 

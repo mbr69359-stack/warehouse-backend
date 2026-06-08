@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -81,9 +80,9 @@ public class InventoryServiceImpl implements InventoryService {
                     ledger.setType("adjust");
                     ledger.setOperator(operator != null ? operator : "");
                     ledger.setNote(dto.getRemark());
-                    ledger.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
+                    ledger.setOccurredAt(LocalDateTime.now());
                     ledger.setSynced(1);
-                    ledger.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
+                    ledger.setCreatedAt(LocalDateTime.now());
                     inventoryLedgerMapper.insert(ledger);
                 }
                 stockSnapshotMapper.upsert(
@@ -220,9 +219,9 @@ public class InventoryServiceImpl implements InventoryService {
             ledger.setType("opening");
             ledger.setOperator(operator != null ? operator : "");
             ledger.setNote("期初库存导入");
-            ledger.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
+            ledger.setOccurredAt(LocalDateTime.now());
             ledger.setSynced(1);
-            ledger.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
+            ledger.setCreatedAt(LocalDateTime.now());
             inventoryLedgerMapper.insert(ledger);
 
             stockSnapshotMapper.upsert(product.getId(), warehouse.getId(), newQty, alertQty);

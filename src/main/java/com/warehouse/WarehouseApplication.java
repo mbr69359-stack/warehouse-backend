@@ -3,6 +3,7 @@ package com.warehouse;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.warehouse.entity.SysUser;
 import com.warehouse.mapper.SysUserMapper;
+import java.util.TimeZone;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
@@ -16,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @MapperScan("com.warehouse.mapper")
 public class WarehouseApplication {
     public static void main(String[] args) {
+        TimeZone.setDefault(TimeZone.getTimeZone("Africa/Nairobi"));
         SpringApplication.run(WarehouseApplication.class, args);
     }
 

@@ -12,6 +12,7 @@ spring:
     hikari:
       connection-timeout: 30000
       initialization-fail-timeout: 60000
+      connection-init-sql: "SET time_zone = '+03:00'"
   sql:
     init:
       mode: never

@@ -15,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
@@ -111,7 +110,7 @@ public class InOrderServiceImpl implements InOrderService {
             entry.setType("inbound");
             entry.setDocumentNo(order.getOrderNo());
             entry.setOperator(String.valueOf(operatorId));
-            entry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
+            entry.setOccurredAt(LocalDateTime.now());
             entry.setSynced(1);
 
             // 加权平均成本：snapshot 尚未更新，此时 selectTotalQtyByProductId 返回的是入库前总量
@@ -143,7 +142,7 @@ public class InOrderServiceImpl implements InOrderService {
         }
 
         order.setStatus("CONFIRMED");
-        order.setConfirmTime(LocalDateTime.now(ZoneOffset.UTC));
+        order.setConfirmTime(LocalDateTime.now());
         inOrderMapper.updateById(order);
     }
 
@@ -194,7 +193,7 @@ public class InOrderServiceImpl implements InOrderService {
                     entry.setDocumentNo(order.getOrderNo());
                     entry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
                     entry.setNote("撤销入库单 " + order.getOrderNo());
-                    entry.setOccurredAt(LocalDateTime.now(ZoneOffset.UTC));
+                    entry.setOccurredAt(LocalDateTime.now());
                     entry.setSynced(1);
                     ledgerMapper.insert(entry);
 

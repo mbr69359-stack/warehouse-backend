@@ -15,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -44,7 +43,7 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
         if (dto.getItems() == null || dto.getItems().isEmpty())
             throw new BusinessException("退换商品明细不能为空");
 
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime now = LocalDateTime.now();
         String exchangeNo = "CR" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
                 + String.format("%03d", ThreadLocalRandom.current().nextInt(1000));
         String operator = createdBy != null ? createdBy : "";
@@ -142,10 +141,10 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
 
         // 退货不入库：直接核销，跳过库存增加
         inOrder.setStatus("CONFIRMED");
-        inOrder.setConfirmTime(LocalDateTime.now(ZoneOffset.UTC));
+        inOrder.setConfirmTime(LocalDateTime.now());
         inOrderMapper.updateById(inOrder);
 
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime now = LocalDateTime.now();
         String operator = operatorId != null ? String.valueOf(operatorId) : "system";
         for (InOrderItem inItem : inOrderItems) {
             int qty = inItem.getActualQty() != null ? inItem.getActualQty() : 0;

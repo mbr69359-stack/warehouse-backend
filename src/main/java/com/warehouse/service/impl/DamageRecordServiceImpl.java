@@ -10,7 +10,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 
 @Service
@@ -32,7 +31,7 @@ public class DamageRecordServiceImpl implements DamageRecordService {
         record.setQty(dto.getQty());
         record.setStatus("PENDING");
         record.setRemark(dto.getRemark());
-        record.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        record.setCreatedAt(LocalDateTime.now());
         record.setCreatedBy(createdBy != null ? createdBy : "");
         damageRecordMapper.insert(record);
         return record.getId();

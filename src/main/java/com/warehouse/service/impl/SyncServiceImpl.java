@@ -14,7 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -92,9 +91,9 @@ public class SyncServiceImpl implements SyncService {
             ledger.setType(isOut ? "outbound" : "inbound");
             ledger.setOperator("");
             ledger.setNote(item.getRemark());
-            ledger.setOccurredAt(item.getCreatedAt() != null ? item.getCreatedAt() : LocalDateTime.now(ZoneOffset.UTC));
+            ledger.setOccurredAt(item.getCreatedAt() != null ? item.getCreatedAt() : LocalDateTime.now());
             ledger.setSynced(1);
-            ledger.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
+            ledger.setCreatedAt(LocalDateTime.now());
             inventoryLedgerMapper.insert(ledger);
 
             // 更新快照缓存
