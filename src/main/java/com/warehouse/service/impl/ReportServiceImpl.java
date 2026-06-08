@@ -132,4 +132,25 @@ public class ReportServiceImpl implements ReportService {
         }
         return result;
     }
+
+    @Override
+    public List<Map<String, Object>> productProfitReport(LocalDate startDate, LocalDate endDate, Long warehouseId) {
+        String start = startDate.atStartOfDay().format(DT_FMT);
+        String end   = endDate.atTime(23, 59, 59).format(DT_FMT);
+        List<Map<String, Object>> rows = outOrderMapper.selectProductProfitReport(start, end, warehouseId);
+        for (Map<String, Object> row : rows) {
+            BigDecimal revenue     = toBD(row.get("revenue"));
+            BigDecimal grossProfit = toBD(row.get("grossProfit"));
+            double margin = revenue.compareTo(BigDecimal.ZERO) == 0 ? 0
+                    : grossProfit.divide(revenue, 4, java.math.RoundingMode.HALF_UP).doubleValue();
+            row.put("grossMargin", margin);
+        }
+        return rows;
+    }
+
+    private BigDecimal toBD(Object val) {
+        if (val == null) return BigDecimal.ZERO;
+        if (val instanceof BigDecimal) return (BigDecimal) val;
+        try { return new BigDecimal(val.toString()); } catch (Exception e) { return BigDecimal.ZERO; }
+    }
 }

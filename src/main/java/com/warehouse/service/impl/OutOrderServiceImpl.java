@@ -7,6 +7,7 @@ import com.warehouse.dto.ConfirmItemDTO;
 import com.warehouse.dto.OutOrderDTO;
 import com.warehouse.entity.*;
 import com.warehouse.mapper.*;
+import com.warehouse.service.SysConfigService;
 import com.warehouse.common.BusinessException;
 import com.warehouse.service.OutOrderService;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +38,8 @@ public class OutOrderServiceImpl implements OutOrderService {
     private final CustomerReturnMapper customerReturnMapper;
     private final CustomerMapper customerMapper;
     private final ProductMapper productMapper;
+    private final ExpenseMapper expenseMapper;
+    private final SysConfigService sysConfigService;
 
     @Override
     public OutOrder getById(Long id) {
@@ -89,8 +93,16 @@ public class OutOrderServiceImpl implements OutOrderService {
         order.setOperatorId(operatorId);
         order.setRemark(dto.getRemark());
         order.setTargetWarehouseId(dto.getTargetWarehouseId());
-        // 保存客户关联（可选字段）
         order.setCustomerId(dto.getCustomerId());
+        if ("SALE".equals(dto.getType())) {
+            if (dto.getSaleChannel() == null || dto.getSaleChannel().trim().isEmpty()) {
+                throw new BusinessException("销售出库必须选择销售渠道（零售/批发）");
+            }
+            if (!"RETAIL".equals(dto.getSaleChannel()) && !"WHOLESALE".equals(dto.getSaleChannel())) {
+                throw new BusinessException("销售渠道值无效，只允许 RETAIL 或 WHOLESALE");
+            }
+            order.setSaleChannel(dto.getSaleChannel());
+        }
         outOrderMapper.insert(order);
 
         if ("DAMAGE_OUT".equals(dto.getType())
@@ -248,6 +260,10 @@ public class OutOrderServiceImpl implements OutOrderService {
             }
         }
 
+        if ("SALE".equals(order.getType()) && order.getSaleChannel() != null) {
+            autoCreateCommission(order, items, operatorId);
+        }
+
         order.setStatus("CONFIRMED");
         order.setConfirmTime(LocalDateTime.now());
         outOrderMapper.updateById(order);
@@ -322,6 +338,10 @@ public class OutOrderServiceImpl implements OutOrderService {
                 }
             }
 
+            if ("SALE".equals(order.getType())) {
+                handleCommissionOnDelete(order, operatorId);
+            }
+
             if ("DAMAGE_OUT".equals(order.getType())) {
                 UpdateWrapper<DamageRecord> uw = new UpdateWrapper<>();
                 uw.eq("out_order_id", orderId)
@@ -353,6 +373,57 @@ public class OutOrderServiceImpl implements OutOrderService {
 
         outOrderItemMapper.delete(new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
         outOrderMapper.deleteById(orderId);
+    }
+
+    private void autoCreateCommission(OutOrder order, List<OutOrderItem> items, Long operatorId) {
+        int totalQty = 0;
+        for (OutOrderItem item : items) {
+            int qty = item.getActualQty() != null ? item.getActualQty()
+                    : (item.getQty() != null ? item.getQty() : 0);
+            totalQty += qty;
+        }
+        if (totalQty <= 0) return;
+
+        boolean isRetail = "RETAIL".equals(order.getSaleChannel());
+        String configKey = isRetail ? "COMMISSION_RATE_RETAIL" : "COMMISSION_RATE_WHOLESALE";
+        BigDecimal defaultRate = isRetail ? BigDecimal.ONE : new BigDecimal("2.00");
+        BigDecimal rate = sysConfigService.getDecimal(configKey, defaultRate);
+
+        String channelLabel = isRetail ? "零售" : "批发";
+        Expense expense = new Expense();
+        expense.setExpenseDate(LocalDate.now());
+        expense.setWarehouseId(order.getWarehouseId());
+        expense.setType("COMMISSION");
+        expense.setAmount(rate.multiply(BigDecimal.valueOf(totalQty)));
+        expense.setNote("自动计算：" + order.getOrderNo() + " " + channelLabel + "提成");
+        expense.setOperatorId(operatorId);
+        expenseMapper.insert(expense);
+    }
+
+    private void handleCommissionOnDelete(OutOrder order, Long operatorId) {
+        LambdaQueryWrapper<Expense> q = new LambdaQueryWrapper<Expense>()
+                .eq(Expense::getType, "COMMISSION")
+                .like(Expense::getNote, order.getOrderNo())
+                .eq(Expense::getDeleted, 0);
+        Expense commission = expenseMapper.selectOne(q);
+        if (commission == null) return;
+
+        YearMonth commissionMonth = YearMonth.from(commission.getExpenseDate());
+        YearMonth currentMonth    = YearMonth.now();
+        if (commissionMonth.equals(currentMonth)) {
+            expenseMapper.deleteById(commission.getId());
+        } else {
+            boolean isRetail = "RETAIL".equals(order.getSaleChannel());
+            String channelLabel = isRetail ? "零售" : "批发";
+            Expense reversal = new Expense();
+            reversal.setExpenseDate(LocalDate.now());
+            reversal.setWarehouseId(order.getWarehouseId());
+            reversal.setType("COMMISSION");
+            reversal.setAmount(commission.getAmount().negate());
+            reversal.setNote("冲销：" + order.getOrderNo() + " " + channelLabel + "提成");
+            reversal.setOperatorId(operatorId);
+            expenseMapper.insert(reversal);
+        }
     }
 
     private String generateNo() {

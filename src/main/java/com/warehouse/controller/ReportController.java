@@ -88,4 +88,12 @@ public class ReportController {
             @RequestParam(required = false) Long warehouseId) {
         return Result.success(reportService.grossProfitReport(startDate, endDate, warehouseId));
     }
+
+    @GetMapping("/product-profit")
+    public Result<List<Map<String, Object>>> productProfitReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long warehouseId) {
+        return Result.success(reportService.productProfitReport(startDate, endDate, warehouseId));
+    }
 }

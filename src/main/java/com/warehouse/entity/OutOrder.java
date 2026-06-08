@@ -24,6 +24,8 @@ public class OutOrder {
     private String exchangeNo;
     /** 关联客户ID（可选） */
     private Long customerId;
+    /** 销售渠道：RETAIL=零售，WHOLESALE=批发（仅SALE类型有效） */
+    private String saleChannel;
     /** 客户名称（非持久化，用于接口返回） */
     @TableField(exist = false)
     private String customerName;

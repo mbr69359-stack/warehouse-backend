@@ -1,0 +1,1 @@
+ALTER TABLE out_order ADD COLUMN sale_channel VARCHAR(20) NULL COMMENT '销售渠道：RETAIL=零售，WHOLESALE=批发（仅SALE类型有效）';

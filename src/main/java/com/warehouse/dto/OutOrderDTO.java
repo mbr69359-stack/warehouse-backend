@@ -18,6 +18,8 @@ public class OutOrderDTO {
     private Long targetWarehouseId;
     /** 关联客户ID（可选） */
     private Long customerId;
+    /** 销售渠道：RETAIL=零售，WHOLESALE=批发（type=SALE时必填） */
+    private String saleChannel;
     private List<Long> damageRecordIds;
     @Valid
     private List<Item> items;

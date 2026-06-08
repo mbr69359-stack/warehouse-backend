@@ -51,6 +51,26 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
             @Param("warehouseId") Long warehouseId);
 
     @Select("<script>" +
+            "SELECT oi.product_id AS productId, p.name AS productName, p.sku_code AS skuCode, " +
+            "  COALESCE(SUM(COALESCE(oi.actual_qty,oi.qty) * oi.price), 0) AS revenue, " +
+            "  COALESCE(SUM(COALESCE(oi.actual_qty,oi.qty) * COALESCE(NULLIF(oi.cost_price,0), p.cost_price, 0)), 0) AS cogs, " +
+            "  COALESCE(SUM(COALESCE(oi.actual_qty,oi.qty) * oi.price), 0) - " +
+            "  COALESCE(SUM(COALESCE(oi.actual_qty,oi.qty) * COALESCE(NULLIF(oi.cost_price,0), p.cost_price, 0)), 0) AS grossProfit " +
+            "FROM out_order oo " +
+            "JOIN out_order_item oi ON oi.order_id = oo.id " +
+            "JOIN product p ON p.id = oi.product_id AND p.deleted = 0 " +
+            "WHERE oo.status = 'CONFIRMED' AND oo.deleted = 0 AND oo.type = 'SALE' " +
+            "  AND oo.confirm_time BETWEEN #{startDate} AND #{endDate} " +
+            "<if test='warehouseId != null'>AND oo.warehouse_id = #{warehouseId} </if>" +
+            "GROUP BY oi.product_id, p.name, p.sku_code " +
+            "ORDER BY grossProfit DESC" +
+            "</script>")
+    List<Map<String, Object>> selectProductProfitReport(
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("warehouseId") Long warehouseId);
+
+    @Select("<script>" +
             "SELECT c.id AS customerId, c.name AS customerName, c.contact, c.phone, " +
             "       COUNT(DISTINCT oo.id) AS orderCount, " +
             "       COALESCE(SUM(COALESCE(oi.actual_qty, oi.qty)), 0) AS totalQty, " +
