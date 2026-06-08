@@ -114,12 +114,12 @@ public class InOrderServiceImpl implements InOrderService {
             entry.setOccurredAt(LocalDateTime.now());
             entry.setSynced(1);
 
-            // 加权平均成本：snapshot 尚未更新，此时 selectTotalQtyByProductId 返回的是入库前总量
+            // 加权平均成本：只用当前仓库的量（beforeQty/afterQty 已加行锁，无需跨仓库汇总）
             if (item.getPrice() != null && item.getPrice().compareTo(BigDecimal.ZERO) > 0) {
                 Product prod = productMapper.selectById(item.getProductId());
                 if (prod != null) {
-                    BigDecimal totalBefore = snapshotMapper.selectTotalQtyByProductId(item.getProductId());
-                    BigDecimal totalAfter  = totalBefore.add(BigDecimal.valueOf(qty));
+                    BigDecimal totalBefore = beforeQty;   // 当前仓库入库前数量
+                    BigDecimal totalAfter  = afterQty;    // 当前仓库入库后数量
                     if (totalAfter.compareTo(BigDecimal.ZERO) > 0) {
                         BigDecimal oldCost = prod.getCostPrice() != null ? prod.getCostPrice() : BigDecimal.ZERO;
                         BigDecimal newCost = totalBefore.multiply(oldCost)
@@ -216,9 +216,9 @@ public class InOrderServiceImpl implements InOrderService {
                     if (item.getPrice() != null && item.getPrice().compareTo(BigDecimal.ZERO) > 0) {
                         Product prod = productMapper.selectById(item.getProductId());
                         if (prod != null && prod.getCostPrice() != null) {
-                            // snapshot 已扣减，此时 selectTotalQtyByProductId 返回撤销后的总量
-                            BigDecimal totalWithout = snapshotMapper.selectTotalQtyByProductId(item.getProductId());
-                            BigDecimal totalWith = totalWithout.add(actualQtyBD);
+                            // 只用当前仓库的量，与 confirm() 的计算口径保持一致
+                            BigDecimal totalWithout = afterQty;    // 当前仓库撤销后数量
+                            BigDecimal totalWith = beforeQty;      // 当前仓库撤销前数量
                             BigDecimal currentCost = prod.getCostPrice();
                             if (totalWithout.compareTo(BigDecimal.ZERO) > 0) {
                                 // 反向公式：旧成本 = (当前成本×撤销前总量 - 撤销数量×进价) / 撤销后总量
