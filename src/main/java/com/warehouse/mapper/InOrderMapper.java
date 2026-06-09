@@ -26,6 +26,7 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
             @Param("endDate") String endDate);
 
     @Select("SELECT p.id AS productId, p.name AS productName, p.sku_code AS skuCode, p.unit, " +
+            "       p.qty_per_box AS qtyPerBox, " +
             "       COALESCE(c.name, '未分类') AS categoryName, " +
             "       COALESCE(i_in.inQty, 0) AS inQty, " +
             "       COALESCE(i_in.inAmount, 0) AS inAmount, " +
