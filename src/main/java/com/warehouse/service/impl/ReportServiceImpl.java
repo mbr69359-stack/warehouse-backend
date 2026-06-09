@@ -1,5 +1,6 @@
 package com.warehouse.service.impl;
 
+import com.warehouse.mapper.DamageRecordMapper;
 import com.warehouse.mapper.ExpenseMapper;
 import com.warehouse.mapper.InOrderMapper;
 import com.warehouse.mapper.InventoryLedgerMapper;
@@ -25,6 +26,7 @@ public class ReportServiceImpl implements ReportService {
     private final InventoryLedgerMapper inventoryLedgerMapper;
     private final StockSnapshotMapper stockSnapshotMapper;
     private final ExpenseMapper expenseMapper;
+    private final DamageRecordMapper damageRecordMapper;
 
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -155,6 +157,14 @@ public class ReportServiceImpl implements ReportService {
             row.put("grossMargin", margin);
         }
         return rows;
+    }
+
+    @Override
+    public List<Map<String, Object>> damageReport(LocalDate startDate, LocalDate endDate, Long warehouseId) {
+        return damageRecordMapper.selectDamageReport(
+            startDate.atStartOfDay().format(DT_FMT),
+            endDate.atTime(23, 59, 59).format(DT_FMT),
+            warehouseId);
     }
 
     private BigDecimal toBD(Object val) {

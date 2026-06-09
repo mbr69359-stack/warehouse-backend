@@ -97,4 +97,12 @@ public class ReportController {
             @RequestParam(required = false) Long warehouseId) {
         return Result.success(reportService.productProfitReport(startDate, endDate, warehouseId));
     }
+
+    @GetMapping("/damage")
+    public Result<List<Map<String, Object>>> damageReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long warehouseId) {
+        return Result.success(reportService.damageReport(startDate, endDate, warehouseId));
+    }
 }

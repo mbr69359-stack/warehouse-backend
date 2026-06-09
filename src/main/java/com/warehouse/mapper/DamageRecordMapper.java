@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface DamageRecordMapper extends BaseMapper<DamageRecord> {
@@ -48,4 +49,29 @@ public interface DamageRecordMapper extends BaseMapper<DamageRecord> {
 
     @Select("SELECT * FROM damage_record WHERE id = #{id} FOR UPDATE")
     DamageRecord selectByIdForUpdate(@Param("id") Long id);
+
+    @Select("<script>" +
+        "SELECT DATE_FORMAT(d.created_at, '%m-%d') AS date, " +
+        "       DATE_FORMAT(d.created_at, '%Y-%m-%d') AS fullDate, " +
+        "       p.name AS productName, p.sku_code AS skuCode, p.unit, " +
+        "       w.name AS warehouseName, " +
+        "       d.qty AS damagedQty, " +
+        "       p.cost_price AS costPrice, " +
+        "       d.cost_deduction AS costDeduction, " +
+        "       d.good_qty AS goodQty, " +
+        "       tw.name AS transferWarehouseName, " +
+        "       d.transfer_price AS transferPrice " +
+        "FROM damage_record d " +
+        "JOIN product p ON p.id = d.product_id AND p.deleted = 0 " +
+        "JOIN warehouse w ON w.id = d.warehouse_id " +
+        "LEFT JOIN warehouse tw ON tw.id = d.transfer_warehouse_id " +
+        "WHERE d.status = 'RESOLVED' " +
+        "  AND d.created_at BETWEEN #{startDate} AND #{endDate} " +
+        "<if test='warehouseId != null'>AND d.warehouse_id = #{warehouseId} </if>" +
+        "ORDER BY d.created_at ASC" +
+        "</script>")
+    List<Map<String, Object>> selectDamageReport(
+        @Param("startDate") String startDate,
+        @Param("endDate") String endDate,
+        @Param("warehouseId") Long warehouseId);
 }
