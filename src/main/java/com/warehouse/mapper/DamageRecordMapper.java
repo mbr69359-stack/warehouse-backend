@@ -51,6 +51,21 @@ public interface DamageRecordMapper extends BaseMapper<DamageRecord> {
     DamageRecord selectByIdForUpdate(@Param("id") Long id);
 
     @Select("<script>" +
+        "SELECT DATE(d.created_at) AS statDate, " +
+        "  COALESCE(SUM(d.qty * COALESCE(p.cost_price, 0)), 0) AS returnDamageLoss " +
+        "FROM damage_record d " +
+        "JOIN product p ON p.id = d.product_id AND p.deleted = 0 " +
+        "WHERE d.source = 'RETURN_INBOUND' AND d.status = 'RESOLVED' " +
+        "  AND d.created_at BETWEEN #{startDate} AND #{endDate} " +
+        "<if test='warehouseId != null'>AND d.warehouse_id = #{warehouseId} </if>" +
+        "GROUP BY DATE(d.created_at)" +
+        "</script>")
+    List<Map<String, Object>> selectReturnDamageLossByDate(
+        @Param("startDate") String startDate,
+        @Param("endDate") String endDate,
+        @Param("warehouseId") Long warehouseId);
+
+    @Select("<script>" +
         "SELECT DATE_FORMAT(d.created_at, '%m-%d') AS date, " +
         "       DATE_FORMAT(d.created_at, '%Y-%m-%d') AS fullDate, " +
         "       p.name AS productName, p.sku_code AS skuCode, p.unit, " +

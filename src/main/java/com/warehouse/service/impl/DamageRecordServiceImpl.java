@@ -120,23 +120,19 @@ public class DamageRecordServiceImpl implements DamageRecordService {
         String docNo             = "DAMAGE-" + record.getId();
         LocalDateTime now        = LocalDateTime.now();
 
-        // 扣减 BOX 仓库快照（整箱）
-        StockSnapshot boxSnap       = snapshotMapper.selectOneForUpdate(record.getProductId(), record.getWarehouseId());
-        BigDecimal    boxCurrentQty = boxSnap != null ? boxSnap.getCurrentQty() : BigDecimal.ZERO;
-        if (boxCurrentQty.compareTo(BigDecimal.valueOf(qtyPerBox)) < 0)
-            throw new BusinessException("库存不足，当前库存" + boxCurrentQty + "个，需扣减" + qtyPerBox + "个");
-        snapshotMapper.upsert(record.getProductId(), record.getWarehouseId(),
-                boxCurrentQty.subtract(BigDecimal.valueOf(qtyPerBox)),
-                boxSnap.getAlertQty() != null ? boxSnap.getAlertQty() : 0);
-
-        // 流水账：damage(-damagedQty)
-        ledgerMapper.insert(buildLedger(record.getProductId(), record.getWarehouseId(),
-                BigDecimal.valueOf(-damagedQty), "damage", docNo, operator, now));
-
+        // create() 已扣减 damagedQty；此处只将好货（goodQty）从 BOX 调拨到 PIECE，不重复扣坏货
         Long resolvedTransferWarehouseId = null;
         BigDecimal resolvedTransferPrice = null;
 
         if (goodQty > 0) {
+            StockSnapshot boxSnap       = snapshotMapper.selectOneForUpdate(record.getProductId(), record.getWarehouseId());
+            BigDecimal    boxCurrentQty = boxSnap != null ? boxSnap.getCurrentQty() : BigDecimal.ZERO;
+            if (boxCurrentQty.compareTo(BigDecimal.valueOf(goodQty)) < 0)
+                throw new BusinessException("库存不足，BOX 仓剩余 " + boxCurrentQty + " 个，需调拨好货 " + goodQty + " 个");
+            snapshotMapper.upsert(record.getProductId(), record.getWarehouseId(),
+                    boxCurrentQty.subtract(BigDecimal.valueOf(goodQty)),
+                    boxSnap != null && boxSnap.getAlertQty() != null ? boxSnap.getAlertQty() : 0);
+
             // 流水账：transfer_out(-goodQty) 来自 BOX 仓库
             ledgerMapper.insert(buildLedger(record.getProductId(), record.getWarehouseId(),
                     BigDecimal.valueOf(-goodQty), "transfer_out", docNo, operator, now));

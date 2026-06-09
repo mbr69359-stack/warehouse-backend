@@ -108,37 +108,43 @@ public class ReportServiceImpl implements ReportService {
         String dateStart = startDate.toString();
         String dateEnd   = endDate.toString();
 
-        List<Map<String, Object>> salesRows   = outOrderMapper.selectGrossProfitReport(start, end, warehouseId);
-        List<Map<String, Object>> expenseRows = expenseMapper.selectExpenseSummaryByDate(dateStart, dateEnd, warehouseId);
+        List<Map<String, Object>> salesRows        = outOrderMapper.selectGrossProfitReport(start, end, warehouseId);
+        List<Map<String, Object>> expenseRows      = expenseMapper.selectExpenseSummaryByDate(dateStart, dateEnd, warehouseId);
+        List<Map<String, Object>> returnDamageRows = damageRecordMapper.selectReturnDamageLossByDate(start, end, warehouseId);
 
         // 以日期字符串为 key 建索引
         Map<String, Map<String, Object>> salesByDate = salesRows.stream()
                 .collect(Collectors.toMap(r -> r.get("statDate").toString(), r -> r, (a, b) -> a));
         Map<String, Map<String, Object>> expByDate = expenseRows.stream()
                 .collect(Collectors.toMap(r -> r.get("expenseDate").toString(), r -> r, (a, b) -> a));
+        Map<String, Map<String, Object>> returnDamageByDate = returnDamageRows.stream()
+                .collect(Collectors.toMap(r -> r.get("statDate").toString(), r -> r, (a, b) -> a));
 
         // 全外联合所有出现过的日期
         Set<String> allDates = new TreeSet<>();
         allDates.addAll(salesByDate.keySet());
         allDates.addAll(expByDate.keySet());
+        allDates.addAll(returnDamageByDate.keySet());
 
         List<Map<String, Object>> result = new ArrayList<>();
         for (String date : allDates) {
             Map<String, Object> row = new LinkedHashMap<>();
             Map<String, Object> s = salesByDate.getOrDefault(date, Collections.emptyMap());
             Map<String, Object> e = expByDate.getOrDefault(date, Collections.emptyMap());
+            Map<String, Object> rd = returnDamageByDate.getOrDefault(date, Collections.emptyMap());
 
-            row.put("statDate",        date);
-            row.put("revenue",         s.getOrDefault("revenue",         BigDecimal.ZERO));
-            row.put("cogs",            s.getOrDefault("cogs",            BigDecimal.ZERO));
-            row.put("replacementLoss", s.getOrDefault("replacementLoss", BigDecimal.ZERO));
-            row.put("damageLoss",      s.getOrDefault("damageLoss",      BigDecimal.ZERO));
-            row.put("unloadingFee",    e.getOrDefault("unloadingFee",    BigDecimal.ZERO));
-            row.put("deliveryFee",     e.getOrDefault("deliveryFee",     BigDecimal.ZERO));
-            row.put("salaryFee",       e.getOrDefault("salaryFee",       BigDecimal.ZERO));
-            row.put("commissionFee",   e.getOrDefault("commissionFee",   BigDecimal.ZERO));
-            row.put("storageFee",      e.getOrDefault("storageFee",      BigDecimal.ZERO));
-            row.put("otherFee",        e.getOrDefault("otherFee",        BigDecimal.ZERO));
+            row.put("statDate",          date);
+            row.put("revenue",           s.getOrDefault("revenue",           BigDecimal.ZERO));
+            row.put("cogs",              s.getOrDefault("cogs",              BigDecimal.ZERO));
+            row.put("replacementLoss",   s.getOrDefault("replacementLoss",   BigDecimal.ZERO));
+            row.put("returnDamageLoss",  rd.getOrDefault("returnDamageLoss", BigDecimal.ZERO));
+            row.put("damageLoss",        s.getOrDefault("damageLoss",        BigDecimal.ZERO));
+            row.put("unloadingFee",      e.getOrDefault("unloadingFee",      BigDecimal.ZERO));
+            row.put("deliveryFee",       e.getOrDefault("deliveryFee",       BigDecimal.ZERO));
+            row.put("salaryFee",         e.getOrDefault("salaryFee",         BigDecimal.ZERO));
+            row.put("commissionFee",     e.getOrDefault("commissionFee",     BigDecimal.ZERO));
+            row.put("storageFee",        e.getOrDefault("storageFee",        BigDecimal.ZERO));
+            row.put("otherFee",          e.getOrDefault("otherFee",          BigDecimal.ZERO));
             result.add(row);
         }
         return result;

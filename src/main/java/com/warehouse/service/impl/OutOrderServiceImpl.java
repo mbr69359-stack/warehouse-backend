@@ -196,7 +196,7 @@ public class OutOrderServiceImpl implements OutOrderService {
         }
 
         String ledgerType;
-        if ("TRANSFER".equals(order.getType())) ledgerType = "transfer";
+        if ("TRANSFER".equals(order.getType())) ledgerType = "transfer_out";
         else if ("DAMAGE_OUT".equals(order.getType())) ledgerType = "damage_out";
         else if ("REPLACEMENT_OUT".equals(order.getType())) ledgerType = "replacement_out";
         else ledgerType = "outbound";
