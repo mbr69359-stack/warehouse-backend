@@ -14,9 +14,13 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
     @Select("SELECT * FROM out_order WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     OutOrder selectByIdForUpdate(@Param("id") Long id);
 
-    @Select("SELECT DATE(o.confirm_time) AS date, COUNT(*) AS count, " +
-            "COALESCE(SUM(COALESCE(i.actual_qty, i.qty) * i.price), 0) AS amount " +
-            "FROM out_order o LEFT JOIN out_order_item i ON o.id = i.order_id " +
+    @Select("SELECT DATE(o.confirm_time) AS date, COUNT(DISTINCT o.id) AS count, " +
+            "COALESCE(SUM(COALESCE(i.actual_qty, i.qty) * i.price), 0) AS amount, " +
+            "COALESCE(SUM(COALESCE(i.actual_qty, i.qty)), 0) AS totalQty, " +
+            "COALESCE(SUM(FLOOR(COALESCE(i.actual_qty, i.qty) / NULLIF(p.qty_per_box, 0))), 0) AS totalBoxes " +
+            "FROM out_order o " +
+            "LEFT JOIN out_order_item i ON o.id = i.order_id " +
+            "LEFT JOIN product p ON p.id = i.product_id AND p.deleted = 0 " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 " +
             "AND o.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "GROUP BY DATE(o.confirm_time) ORDER BY date")

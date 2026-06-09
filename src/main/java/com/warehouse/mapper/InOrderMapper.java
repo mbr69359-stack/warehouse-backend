@@ -15,9 +15,13 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
     @Select("SELECT * FROM in_order WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     InOrder selectByIdForUpdate(@Param("id") Long id);
 
-    @Select("SELECT DATE(o.confirm_time) AS date, COUNT(*) AS count, " +
-            "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty) * i.price), 0) AS amount " +
-            "FROM in_order o LEFT JOIN in_order_item i ON o.id = i.order_id " +
+    @Select("SELECT DATE(o.confirm_time) AS date, COUNT(DISTINCT o.id) AS count, " +
+            "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty) * i.price), 0) AS amount, " +
+            "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty)), 0) AS totalQty, " +
+            "COALESCE(SUM(FLOOR(COALESCE(i.actual_qty, i.plan_qty) / NULLIF(p.qty_per_box, 0))), 0) AS totalBoxes " +
+            "FROM in_order o " +
+            "LEFT JOIN in_order_item i ON o.id = i.order_id " +
+            "LEFT JOIN product p ON p.id = i.product_id AND p.deleted = 0 " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 AND o.type != 'RETURN_IN' " +
             "AND o.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "GROUP BY DATE(o.confirm_time) ORDER BY date")
