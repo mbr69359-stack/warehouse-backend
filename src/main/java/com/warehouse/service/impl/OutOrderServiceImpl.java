@@ -170,6 +170,9 @@ public class OutOrderServiceImpl implements OutOrderService {
             if (Integer.valueOf(0).equals(targetWarehouse.getStatus())) throw new BusinessException("目标仓库已禁用，无法入库");
         }
 
+        String warehouseType = warehouseMapper.selectTypeById(order.getWarehouseId());
+        boolean isBoxWarehouse = "BOX".equals(warehouseType);
+
         List<OutOrderItem> items = outOrderItemMapper.selectList(
                 new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
 
@@ -202,6 +205,7 @@ public class OutOrderServiceImpl implements OutOrderService {
         else ledgerType = "outbound";
 
         java.util.Set<Long> writtenOffProductIds = new java.util.HashSet<>();
+        int totalPieceQtyForCommission = 0;
         for (OutOrderItem item : items) {
             // actualQty 为 null 时用计划数量兜底；明确填0表示不出库，直接跳过
             int qty = item.getActualQty() != null ? item.getActualQty()
@@ -216,34 +220,40 @@ public class OutOrderServiceImpl implements OutOrderService {
                 outOrderItemMapper.updateById(item);
             }
 
+            // BOX仓库：箱数换算为个数（DAMAGE_OUT的qty已是个数，不换算）
+            boolean hasPrBox = latestProd != null && latestProd.getQtyPerBox() != null && latestProd.getQtyPerBox() > 0;
+            int pieceQty = (isBoxWarehouse && hasPrBox && !"DAMAGE_OUT".equals(order.getType()))
+                    ? qty * latestProd.getQtyPerBox() : qty;
+
             if ("DAMAGE_OUT".equals(order.getType())) {
                 // Bug #4 fix: 库存已在损坏记录 create() 时扣减，DAMAGE_OUT 确认只标记核销，不重复操作快照
                 continue;
             }
 
+            totalPieceQtyForCommission += pieceQty;
+
             StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
             BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
-            if (beforeQty.compareTo(BigDecimal.valueOf(qty)) < 0) {
+            if (beforeQty.compareTo(BigDecimal.valueOf(pieceQty)) < 0) {
                 throw new BusinessException("商品ID " + item.getProductId() + " 库存不足，当前：" +
-                        beforeQty.toPlainString() + "，需要：" + qty);
+                        beforeQty.toPlainString() + "，需要：" + pieceQty);
             }
-            BigDecimal afterQty = beforeQty.subtract(BigDecimal.valueOf(qty));
+            BigDecimal afterQty = beforeQty.subtract(BigDecimal.valueOf(pieceQty));
 
             InventoryLedger outEntry = new InventoryLedger();
             outEntry.setId(UUID.randomUUID().toString());
             outEntry.setProductId(item.getProductId());
             outEntry.setLocationId(order.getWarehouseId());
-            outEntry.setChangeQty(new BigDecimal(-qty));
+            outEntry.setChangeQty(new BigDecimal(-pieceQty));
             outEntry.setType(ledgerType);
             outEntry.setDocumentNo(order.getOrderNo());
             outEntry.setOperator(String.valueOf(operatorId));
             outEntry.setOccurredAt(LocalDateTime.now());
             outEntry.setSynced(1);
-            if ("DAMAGE_OUT".equals(order.getType()) || "REPLACEMENT_OUT".equals(order.getType())) {
-                com.warehouse.entity.Product p = productMapper.selectById(item.getProductId());
-                if (p != null && p.getCostPrice() != null) {
-                    BigDecimal loss = p.getCostPrice().multiply(BigDecimal.valueOf(qty));
-                    outEntry.setNote("单位成本:" + p.getCostPrice().toPlainString() + ",损失金额:" + loss.toPlainString());
+            if ("REPLACEMENT_OUT".equals(order.getType())) {
+                if (latestProd != null && latestProd.getCostPrice() != null) {
+                    BigDecimal loss = latestProd.getCostPrice().multiply(BigDecimal.valueOf(pieceQty));
+                    outEntry.setNote("单位成本:" + latestProd.getCostPrice().toPlainString() + ",损失金额:" + loss.toPlainString());
                 }
             }
             ledgerMapper.insert(outEntry);
@@ -254,13 +264,13 @@ public class OutOrderServiceImpl implements OutOrderService {
             if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
                 StockSnapshot targetSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getTargetWarehouseId());
                 BigDecimal targetBefore = targetSnap != null ? targetSnap.getCurrentQty() : BigDecimal.ZERO;
-                BigDecimal targetAfter = targetBefore.add(BigDecimal.valueOf(qty));
+                BigDecimal targetAfter = targetBefore.add(BigDecimal.valueOf(pieceQty));
 
                 InventoryLedger inEntry = new InventoryLedger();
                 inEntry.setId(UUID.randomUUID().toString());
                 inEntry.setProductId(item.getProductId());
                 inEntry.setLocationId(order.getTargetWarehouseId());
-                inEntry.setChangeQty(new BigDecimal(qty));
+                inEntry.setChangeQty(new BigDecimal(pieceQty));
                 inEntry.setType("transfer_in");
                 inEntry.setDocumentNo(order.getOrderNo());
                 inEntry.setOperator(String.valueOf(operatorId));
@@ -293,7 +303,7 @@ public class OutOrderServiceImpl implements OutOrderService {
         }
 
         if ("SALE".equals(order.getType()) && order.getSaleChannel() != null) {
-            autoCreateCommission(order, items, operatorId);
+            autoCreateCommission(order, totalPieceQtyForCommission, operatorId);
         }
 
         order.setStatus("CONFIRMED");
@@ -315,6 +325,8 @@ public class OutOrderServiceImpl implements OutOrderService {
         if ("CONFIRMED".equals(order.getStatus())) {
             List<OutOrderItem> items = outOrderItemMapper.selectList(
                     new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
+            String delWhType = warehouseMapper.selectTypeById(order.getWarehouseId());
+            boolean delIsBox = "BOX".equals(delWhType);
             for (OutOrderItem item : items) {
                 int restoreQty = item.getActualQty() != null ? item.getActualQty()
                         : (item.getQty() != null ? item.getQty() : 0);
@@ -326,15 +338,20 @@ public class OutOrderServiceImpl implements OutOrderService {
                     continue;
                 }
 
+                // BOX仓库：还原时与确认时用相同的换算（箱→个）
+                com.warehouse.entity.Product restoreProd = productMapper.selectById(item.getProductId());
+                boolean delHasPrBox = restoreProd != null && restoreProd.getQtyPerBox() != null && restoreProd.getQtyPerBox() > 0;
+                int pieceRestoreQty = (delIsBox && delHasPrBox) ? restoreQty * restoreProd.getQtyPerBox() : restoreQty;
+
                 StockSnapshot srcSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
                 BigDecimal srcBefore = srcSnap != null ? srcSnap.getCurrentQty() : BigDecimal.ZERO;
-                BigDecimal srcAfter  = srcBefore.add(BigDecimal.valueOf(restoreQty));
+                BigDecimal srcAfter  = srcBefore.add(BigDecimal.valueOf(pieceRestoreQty));
 
                 InventoryLedger cancelEntry = new InventoryLedger();
                 cancelEntry.setId(UUID.randomUUID().toString());
                 cancelEntry.setProductId(item.getProductId());
                 cancelEntry.setLocationId(order.getWarehouseId());
-                cancelEntry.setChangeQty(new BigDecimal(restoreQty));
+                cancelEntry.setChangeQty(new BigDecimal(pieceRestoreQty));
                 cancelEntry.setType("outbound_cancel");
                 cancelEntry.setDocumentNo(order.getOrderNo());
                 // Bug 9 fix: 记录真实操作人
@@ -351,17 +368,17 @@ public class OutOrderServiceImpl implements OutOrderService {
                 if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
                     StockSnapshot tgtSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getTargetWarehouseId());
                     BigDecimal tgtBefore = tgtSnap != null ? tgtSnap.getCurrentQty() : BigDecimal.ZERO;
-                    BigDecimal restoreQtyBD = BigDecimal.valueOf(restoreQty);
-                    if (tgtBefore.compareTo(restoreQtyBD) < 0)
-                        throw new BusinessException("目标仓库库存不足以撤销调拨，当前：" + tgtBefore + "，需撤回：" + restoreQty);
+                    BigDecimal pieceRestoreQtyBD = BigDecimal.valueOf(pieceRestoreQty);
+                    if (tgtBefore.compareTo(pieceRestoreQtyBD) < 0)
+                        throw new BusinessException("目标仓库库存不足以撤销调拨，当前：" + tgtBefore + "，需撤回：" + pieceRestoreQty);
 
-                    BigDecimal tgtAfter = tgtBefore.subtract(restoreQtyBD);
+                    BigDecimal tgtAfter = tgtBefore.subtract(pieceRestoreQtyBD);
 
                     InventoryLedger transferCancelEntry = new InventoryLedger();
                     transferCancelEntry.setId(UUID.randomUUID().toString());
                     transferCancelEntry.setProductId(item.getProductId());
                     transferCancelEntry.setLocationId(order.getTargetWarehouseId());
-                    transferCancelEntry.setChangeQty(new BigDecimal(-restoreQty));
+                    transferCancelEntry.setChangeQty(new BigDecimal(-pieceRestoreQty));
                     transferCancelEntry.setType("transfer_cancel");
                     transferCancelEntry.setDocumentNo(order.getOrderNo());
                     transferCancelEntry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
@@ -413,14 +430,8 @@ public class OutOrderServiceImpl implements OutOrderService {
         outOrderMapper.deleteById(orderId);
     }
 
-    private void autoCreateCommission(OutOrder order, List<OutOrderItem> items, Long operatorId) {
-        int totalQty = 0;
-        for (OutOrderItem item : items) {
-            int qty = item.getActualQty() != null ? item.getActualQty()
-                    : (item.getQty() != null ? item.getQty() : 0);
-            totalQty += qty;
-        }
-        if (totalQty <= 0) return;
+    private void autoCreateCommission(OutOrder order, int totalPieceQty, Long operatorId) {
+        if (totalPieceQty <= 0) return;
 
         boolean isRetail = "RETAIL".equals(order.getSaleChannel());
         String configKey = isRetail ? "COMMISSION_RATE_RETAIL" : "COMMISSION_RATE_WHOLESALE";
@@ -432,7 +443,7 @@ public class OutOrderServiceImpl implements OutOrderService {
         expense.setExpenseDate(LocalDate.now());
         expense.setWarehouseId(order.getWarehouseId());
         expense.setType("COMMISSION");
-        expense.setAmount(rate.multiply(BigDecimal.valueOf(totalQty)));
+        expense.setAmount(rate.multiply(BigDecimal.valueOf(totalPieceQty)));
         expense.setNote("自动计算：" + order.getOrderNo() + " " + channelLabel + "提成");
         expense.setOperatorId(operatorId);
         expenseMapper.insert(expense);
