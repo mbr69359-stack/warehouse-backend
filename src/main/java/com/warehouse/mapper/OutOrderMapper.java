@@ -24,12 +24,15 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
             @Param("startDate") String startDate,
             @Param("endDate") String endDate);
 
-    @Select("SELECT " +
+    @Select("<script>" +
+            "SELECT " +
             "COALESCE(SUM(CASE WHEN DATE(o.confirm_time) = CURDATE() THEN COALESCE(i.actual_qty, i.qty) ELSE 0 END), 0) AS todayOutQty, " +
             "COALESCE(SUM(CASE WHEN o.type = 'SALE' AND YEAR(o.confirm_time) = YEAR(CURDATE()) AND MONTH(o.confirm_time) = MONTH(CURDATE()) THEN COALESCE(i.actual_qty, i.qty) * COALESCE(i.price, 0) ELSE 0 END), 0) AS monthSalesAmount " +
             "FROM out_order o LEFT JOIN out_order_item i ON o.id = i.order_id " +
-            "WHERE o.status = 'CONFIRMED' AND o.deleted = 0")
-    Map<String, Object> selectDashboardStats();
+            "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 " +
+            "<if test='warehouseId != null'>AND o.warehouse_id = #{warehouseId} </if>" +
+            "</script>")
+    Map<String, Object> selectDashboardStats(@Param("warehouseId") Long warehouseId);
 
     @Select("<script>" +
             "SELECT DATE(oo.confirm_time) AS statDate, " +

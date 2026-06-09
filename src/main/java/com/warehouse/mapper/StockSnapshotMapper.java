@@ -93,4 +93,23 @@ public interface StockSnapshotMapper {
             "SET s.alert_qty = i.alert_qty, s.updated_at = UTC_TIMESTAMP() " +
             "WHERE s.alert_qty != i.alert_qty")
     int syncAlertQtyFromInventory();
+
+    @Select("<script>" +
+            "SELECT COALESCE(SUM(ss.current_qty), 0) AS totalQty, " +
+            "       COALESCE(SUM(ss.current_qty * p.cost_price), 0) AS totalValue, " +
+            "       COUNT(CASE WHEN ss.alert_qty > 0 AND ss.current_qty &lt; ss.alert_qty THEN 1 END) AS alertCount, " +
+            "       COUNT(DISTINCT ss.product_id) AS productCount " +
+            "FROM stock_snapshot ss " +
+            "JOIN product p ON p.id = ss.product_id AND p.deleted = 0 " +
+            "<if test='warehouseId != null'>WHERE ss.location_id = #{warehouseId} </if>" +
+            "</script>")
+    Map<String, Object> selectDashboardInventoryStats(@Param("warehouseId") Long warehouseId);
+
+    @Select("SELECT ss.location_id AS maxWarehouseId, w.name AS maxWarehouseName, " +
+            "       CAST(SUM(ss.current_qty) AS SIGNED) AS maxWarehouseQty " +
+            "FROM stock_snapshot ss " +
+            "JOIN warehouse w ON w.id = ss.location_id " +
+            "GROUP BY ss.location_id, w.name " +
+            "ORDER BY SUM(ss.current_qty) DESC LIMIT 1")
+    Map<String, Object> selectMaxWarehouse();
 }

@@ -50,8 +50,17 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
-    public Map<String, Object> getDashboardStats() {
-        return outOrderMapper.selectDashboardStats();
+    public Map<String, Object> getDashboardStats(Long warehouseId) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Object> invStats = stockSnapshotMapper.selectDashboardInventoryStats(warehouseId);
+        if (invStats != null) result.putAll(invStats);
+        if (warehouseId == null) {
+            Map<String, Object> maxWh = stockSnapshotMapper.selectMaxWarehouse();
+            if (maxWh != null) result.putAll(maxWh);
+        }
+        Map<String, Object> kpi = outOrderMapper.selectDashboardStats(warehouseId);
+        if (kpi != null) result.putAll(kpi);
+        return result;
     }
 
     @Override

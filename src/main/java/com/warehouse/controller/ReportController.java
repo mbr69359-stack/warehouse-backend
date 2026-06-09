@@ -39,8 +39,9 @@ public class ReportController {
 
     @GetMapping("/dashboard")
     @PreAuthorize("isAuthenticated()")
-    public Result<Map<String, Object>> dashboardStats() {
-        return Result.success(reportService.getDashboardStats());
+    public Result<Map<String, Object>> dashboardStats(
+            @RequestParam(required = false) Long warehouseId) {
+        return Result.success(reportService.getDashboardStats(warehouseId));
     }
 
     @GetMapping("/ledger")

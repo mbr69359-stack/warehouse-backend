@@ -8,7 +8,7 @@ public interface ReportService {
     List<Map<String, Object>> inDailyReport(LocalDate startDate, LocalDate endDate);
     List<Map<String, Object>> outDailyReport(LocalDate startDate, LocalDate endDate);
     Map<String, Object> inventorySummary(Long warehouseId);
-    Map<String, Object> getDashboardStats();
+    Map<String, Object> getDashboardStats(Long warehouseId);
 
     List<Map<String, Object>> ledgerReport(LocalDate startDate, LocalDate endDate, String type, Long warehouseId);
     List<Map<String, Object>> stockMovementReport(LocalDate startDate, LocalDate endDate);
