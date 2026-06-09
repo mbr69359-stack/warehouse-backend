@@ -32,7 +32,15 @@ public class DamageRecordServiceImpl implements DamageRecordService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long create(DamageRecordDTO dto, String createdBy) {
+        // Bug #4 fix: 登记损坏时立即扣减库存，防止已损坏货物再次被销售
+        StockSnapshot snap = snapshotMapper.selectOneForUpdate(dto.getProductId(), dto.getWarehouseId());
+        BigDecimal currentQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
+        BigDecimal deductQty  = BigDecimal.valueOf(dto.getQty());
+        if (currentQty.compareTo(deductQty) < 0)
+            throw new BusinessException("库存不足，当前库存 " + currentQty.toPlainString() + "，登记损坏数量 " + dto.getQty());
+
         DamageRecord record = new DamageRecord();
         record.setWarehouseId(dto.getWarehouseId());
         record.setProductId(dto.getProductId());
@@ -42,6 +50,14 @@ public class DamageRecordServiceImpl implements DamageRecordService {
         record.setCreatedAt(LocalDateTime.now());
         record.setCreatedBy(createdBy != null ? createdBy : "");
         damageRecordMapper.insert(record);
+
+        String operator = createdBy != null ? createdBy : "";
+        ledgerMapper.insert(buildLedger(dto.getProductId(), dto.getWarehouseId(),
+                deductQty.negate(), "damage", "DAMAGE-" + record.getId(), operator, LocalDateTime.now()));
+        snapshotMapper.upsert(dto.getProductId(), dto.getWarehouseId(),
+                currentQty.subtract(deductQty),
+                snap.getAlertQty() != null ? snap.getAlertQty() : 0);
+
         return record.getId();
     }
 
@@ -56,10 +72,23 @@ public class DamageRecordServiceImpl implements DamageRecordService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
-        DamageRecord record = damageRecordMapper.selectById(id);
+        DamageRecord record = damageRecordMapper.selectByIdForUpdate(id);
         if (record == null) throw new BusinessException("损坏记录不存在");
         if ("RESOLVED".equals(record.getStatus())) throw new BusinessException("已核销的记录不能删除");
+
+        // Bug #4 fix: 删除时归还之前在 create() 中扣减的库存
+        String operator = record.getCreatedBy() != null ? record.getCreatedBy() : "system";
+        StockSnapshot snap = snapshotMapper.selectOneForUpdate(record.getProductId(), record.getWarehouseId());
+        BigDecimal currentQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
+        BigDecimal restoreQty = BigDecimal.valueOf(record.getQty());
+        ledgerMapper.insert(buildLedger(record.getProductId(), record.getWarehouseId(),
+                restoreQty, "damage_cancel", "DAMAGE-" + id, operator, LocalDateTime.now()));
+        snapshotMapper.upsert(record.getProductId(), record.getWarehouseId(),
+                currentQty.add(restoreQty),
+                snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0);
+
         damageRecordMapper.deleteById(id);
     }
 

@@ -36,12 +36,15 @@ public class InventoryLedgerServiceImpl implements InventoryLedgerService {
         TYPE_NAME_MAP.put("outbound",         "出库");
         TYPE_NAME_MAP.put("adjust",           "调整");
         TYPE_NAME_MAP.put("transfer",         "调拨出");
+        TYPE_NAME_MAP.put("transfer_out",     "调拨出");
         TYPE_NAME_MAP.put("transfer_in",      "调拨入");
         TYPE_NAME_MAP.put("opening",          "期初");
         TYPE_NAME_MAP.put("inbound_cancel",   "入库撤销");
         TYPE_NAME_MAP.put("outbound_cancel",  "出库撤销");
         TYPE_NAME_MAP.put("transfer_cancel",  "调拨撤销");
+        TYPE_NAME_MAP.put("damage",           "破损扣减");
         TYPE_NAME_MAP.put("damage_out",       "损坏出库");
+        TYPE_NAME_MAP.put("damage_cancel",    "损坏撤销");
         TYPE_NAME_MAP.put("replacement_out",  "补发出库");
     }
 

@@ -215,6 +215,12 @@ public class OutOrderServiceImpl implements OutOrderService {
                 item.setCostPrice(latestProd.getCostPrice());
                 outOrderItemMapper.updateById(item);
             }
+
+            if ("DAMAGE_OUT".equals(order.getType())) {
+                // Bug #4 fix: 库存已在损坏记录 create() 时扣减，DAMAGE_OUT 确认只标记核销，不重复操作快照
+                continue;
+            }
+
             StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
             BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
             if (beforeQty.compareTo(BigDecimal.valueOf(qty)) < 0) {
@@ -313,6 +319,12 @@ public class OutOrderServiceImpl implements OutOrderService {
                 int restoreQty = item.getActualQty() != null ? item.getActualQty()
                         : (item.getQty() != null ? item.getQty() : 0);
                 if (restoreQty <= 0) continue;
+
+                if ("DAMAGE_OUT".equals(order.getType())) {
+                    // Bug #4 fix: 库存已在损坏记录 create() 时扣减，损坏记录回 PENDING 后扣减仍然有效，
+                    // 删除 DAMAGE_OUT 不还原库存（否则已损坏货物会重新出现在可用库存中）
+                    continue;
+                }
 
                 StockSnapshot srcSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
                 BigDecimal srcBefore = srcSnap != null ? srcSnap.getCurrentQty() : BigDecimal.ZERO;

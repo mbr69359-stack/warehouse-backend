@@ -150,12 +150,12 @@ public class InOrderServiceImpl implements InOrderService {
             entry.setOccurredAt(LocalDateTime.now());
             entry.setSynced(1);
 
-            // 加权平均成本：只用当前仓库的量（beforeQty/afterQty 已加行锁，无需跨仓库汇总）
+            // 加权平均成本：用全仓库存量做权重（成本价是全产品字段，必须跨仓库汇总）
             if (item.getPrice() != null && item.getPrice().compareTo(BigDecimal.ZERO) > 0) {
                 Product prod = productMapper.selectById(item.getProductId());
                 if (prod != null) {
-                    BigDecimal totalBefore = beforeQty;   // 当前仓库入库前数量
-                    BigDecimal totalAfter  = afterQty;    // 当前仓库入库后数量
+                    BigDecimal totalBefore = snapshotMapper.selectTotalQtyByProductId(item.getProductId()); // 入库前全仓合计
+                    BigDecimal totalAfter  = totalBefore.add(BigDecimal.valueOf(qty));                       // 入库后全仓合计
                     if (totalAfter.compareTo(BigDecimal.ZERO) > 0) {
                         BigDecimal oldCost = prod.getCostPrice() != null ? prod.getCostPrice() : BigDecimal.ZERO;
                         BigDecimal newCost = totalBefore.multiply(oldCost)
@@ -219,14 +219,27 @@ public class InOrderServiceImpl implements InOrderService {
             if (!"RETURN_IN".equals(order.getType())) {
                 List<InOrderItem> items = inOrderItemMapper.selectList(
                         new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
+                // Bug #1 fix: 撤销时需与 confirm() 保持相同的 BOX→个数换算逻辑
+                String warehouseType = warehouseMapper.selectTypeById(order.getWarehouseId());
+                boolean isBoxWarehouse = "BOX".equals(warehouseType);
+
                 for (InOrderItem item : items) {
-                    int actualQty = item.getActualQty() != null ? item.getActualQty()
+                    int rawQty = item.getActualQty() != null ? item.getActualQty()
                             : (item.getPlanQty() != null ? item.getPlanQty() : 0);
-                    if (actualQty <= 0) continue;
+                    if (rawQty <= 0) continue;
+
+                    // Bug #1 fix: BOX仓且设了每箱数量时，箱数×每箱数量 = 当初实际入库的个数
+                    Product prod = productMapper.selectById(item.getProductId());
+                    boolean hasQtyPerBox = prod != null && prod.getQtyPerBox() != null && prod.getQtyPerBox() > 0;
+                    int actualQty = (isBoxWarehouse && hasQtyPerBox) ? rawQty * prod.getQtyPerBox() : rawQty;
 
                     StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
                     BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
                     BigDecimal actualQtyBD = BigDecimal.valueOf(actualQty);
+
+                    // Bug #2 fix: 还原成本价时用全仓库存量做权重（与 confirm() 口径对称）
+                    BigDecimal allWarehouseTotalBefore = snapshotMapper.selectTotalQtyByProductId(item.getProductId());
+
                     if (beforeQty.compareTo(actualQtyBD) < 0)
                         throw new BusinessException("库存不足以撤销入库，当前库存：" + beforeQty + "，需撤回：" + actualQty);
 
@@ -250,14 +263,11 @@ public class InOrderServiceImpl implements InOrderService {
 
                     // 还原加权平均成本价：只有原进货有进价才需要还原
                     if (item.getPrice() != null && item.getPrice().compareTo(BigDecimal.ZERO) > 0) {
-                        Product prod = productMapper.selectById(item.getProductId());
                         if (prod != null && prod.getCostPrice() != null) {
-                            // 只用当前仓库的量，与 confirm() 的计算口径保持一致
-                            BigDecimal totalWithout = afterQty;    // 当前仓库撤销后数量
-                            BigDecimal totalWith = beforeQty;      // 当前仓库撤销前数量
-                            BigDecimal currentCost = prod.getCostPrice();
+                            BigDecimal totalWith    = allWarehouseTotalBefore;                       // 撤销前全仓合计
+                            BigDecimal totalWithout = allWarehouseTotalBefore.subtract(actualQtyBD); // 撤销后全仓合计
+                            BigDecimal currentCost  = prod.getCostPrice();
                             if (totalWithout.compareTo(BigDecimal.ZERO) > 0) {
-                                // 反向公式：旧成本 = (当前成本×撤销前总量 - 撤销数量×进价) / 撤销后总量
                                 BigDecimal revertedCost = currentCost.multiply(totalWith)
                                         .subtract(actualQtyBD.multiply(item.getPrice()))
                                         .divide(totalWithout, 4, RoundingMode.HALF_UP)
