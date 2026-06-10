@@ -66,8 +66,8 @@ public interface StockSnapshotMapper {
 
     @Select("<script>" +
             "SELECT p.id AS productId, p.name AS productName, p.sku_code AS skuCode, " +
-            "       p.spec, p.unit, COALESCE(c.name, '未分类') AS categoryName, " +
-            "       w.name AS warehouseName, ss.location_id AS locationId, " +
+            "       p.spec, p.unit, p.qty_per_box AS qtyPerBox, COALESCE(c.name, '未分类') AS categoryName, " +
+            "       w.name AS warehouseName, w.type AS warehouseType, ss.location_id AS locationId, " +
             "       ss.current_qty AS currentQty, ss.alert_qty AS alertQty, " +
             "       CASE WHEN ss.alert_qty > 0 AND ss.current_qty &lt; ss.alert_qty THEN 1 ELSE 0 END AS isAlert " +
             "FROM stock_snapshot ss " +

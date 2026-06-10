@@ -17,8 +17,8 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
 
     @Select("SELECT DATE(o.confirm_time) AS date, COUNT(DISTINCT o.id) AS count, " +
             "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty) * i.price), 0) AS amount, " +
-            "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty)), 0) AS totalQty, " +
-            "COALESCE(SUM(FLOOR(COALESCE(i.actual_qty, i.plan_qty) / NULLIF(p.qty_per_box, 0))), 0) AS totalBoxes " +
+            "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty) * COALESCE(p.qty_per_box, 1)), 0) AS totalQty, " +
+            "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty)), 0) AS totalBoxes " +
             "FROM in_order o " +
             "LEFT JOIN in_order_item i ON o.id = i.order_id " +
             "LEFT JOIN product p ON p.id = i.product_id AND p.deleted = 0 " +
@@ -32,9 +32,9 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
     @Select("SELECT p.id AS productId, p.name AS productName, p.sku_code AS skuCode, p.unit, " +
             "       p.qty_per_box AS qtyPerBox, " +
             "       COALESCE(c.name, '未分类') AS categoryName, " +
-            "       COALESCE(i_in.inQty, 0) AS inQty, " +
+            "       COALESCE(i_in.inQty, 0) * COALESCE(p.qty_per_box, 1) AS inQty, " +
             "       COALESCE(i_in.inAmount, 0) AS inAmount, " +
-            "       COALESCE(i_out.outQty, 0) AS outQty, " +
+            "       COALESCE(i_out.outQty, 0) * COALESCE(p.qty_per_box, 1) AS outQty, " +
             "       COALESCE(i_out.outAmount, 0) AS outAmount " +
             "FROM product p " +
             "LEFT JOIN category c ON c.id = p.category_id AND c.deleted = 0 " +

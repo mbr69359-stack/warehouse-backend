@@ -16,8 +16,8 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
 
     @Select("SELECT DATE(o.confirm_time) AS date, COUNT(DISTINCT o.id) AS count, " +
             "COALESCE(SUM(COALESCE(i.actual_qty, i.qty) * i.price), 0) AS amount, " +
-            "COALESCE(SUM(COALESCE(i.actual_qty, i.qty)), 0) AS totalQty, " +
-            "COALESCE(SUM(FLOOR(COALESCE(i.actual_qty, i.qty) / NULLIF(p.qty_per_box, 0))), 0) AS totalBoxes " +
+            "COALESCE(SUM(COALESCE(i.actual_qty, i.qty) * COALESCE(p.qty_per_box, 1)), 0) AS totalQty, " +
+            "COALESCE(SUM(COALESCE(i.actual_qty, i.qty)), 0) AS totalBoxes " +
             "FROM out_order o " +
             "LEFT JOIN out_order_item i ON o.id = i.order_id " +
             "LEFT JOIN product p ON p.id = i.product_id AND p.deleted = 0 " +
