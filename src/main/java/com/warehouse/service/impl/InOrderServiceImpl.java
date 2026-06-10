@@ -124,13 +124,13 @@ public class InOrderServiceImpl implements InOrderService {
                 ledgerQtyUnit = "PIECE";
             }
 
-            // item.price 统一视作每个成本价（BOX仓且已设qtyPerBox：用户填的是每箱价，÷qtyPerBox换算）
+            // 单据保留用户填的原始价（BOX仓即每箱价）；成本计算用换算后的每个价
+            BigDecimal piecePrice = item.getPrice();
             if (isBoxWarehouse && hasQtyPerBox && qtyPerBoxVal > 1
-                    && item.getPrice() != null
-                    && item.getPrice().compareTo(BigDecimal.ZERO) > 0) {
-                item.setPrice(item.getPrice().divide(
-                        BigDecimal.valueOf(qtyPerBoxVal), 4, RoundingMode.HALF_UP));
-                inOrderItemMapper.updateById(item);
+                    && piecePrice != null
+                    && piecePrice.compareTo(BigDecimal.ZERO) > 0) {
+                piecePrice = piecePrice.divide(
+                        BigDecimal.valueOf(qtyPerBoxVal), 4, RoundingMode.HALF_UP);
             }
 
             // Bug 2 fix: 加行锁，防止并发写入 snapshot 时数字互相覆盖
@@ -151,7 +151,7 @@ public class InOrderServiceImpl implements InOrderService {
             entry.setSynced(1);
 
             // 加权平均成本：用全仓库存量做权重（成本价是全产品字段，必须跨仓库汇总）
-            if (item.getPrice() != null && item.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+            if (piecePrice != null && piecePrice.compareTo(BigDecimal.ZERO) > 0) {
                 Product prod = productMapper.selectById(item.getProductId());
                 if (prod != null) {
                     BigDecimal totalBefore = snapshotMapper.selectTotalQtyByProductId(item.getProductId()); // 入库前全仓合计
@@ -159,14 +159,14 @@ public class InOrderServiceImpl implements InOrderService {
                     if (totalAfter.compareTo(BigDecimal.ZERO) > 0) {
                         BigDecimal oldCost = prod.getCostPrice() != null ? prod.getCostPrice() : BigDecimal.ZERO;
                         BigDecimal newCost = totalBefore.multiply(oldCost)
-                                .add(BigDecimal.valueOf(qty).multiply(item.getPrice()))
+                                .add(BigDecimal.valueOf(qty).multiply(piecePrice))
                                 .divide(totalAfter, 4, RoundingMode.HALF_UP)
                                 .setScale(2, RoundingMode.HALF_UP);
                         Product toUpdate = new Product();
                         toUpdate.setId(prod.getId());
                         toUpdate.setCostPrice(newCost);
                         productMapper.updateById(toUpdate);
-                        entry.setNote("进价" + item.getPrice().toPlainString()
+                        entry.setNote("进价" + piecePrice.toPlainString()
                                 + " 均价" + oldCost.setScale(2, RoundingMode.HALF_UP) + "→" + newCost);
 
                         if (newCost.compareTo(oldCost) != 0) {
@@ -268,8 +268,9 @@ public class InOrderServiceImpl implements InOrderService {
                             BigDecimal totalWithout = allWarehouseTotalBefore.subtract(actualQtyBD); // 撤销后全仓合计
                             BigDecimal currentCost  = prod.getCostPrice();
                             if (totalWithout.compareTo(BigDecimal.ZERO) > 0) {
+                                // item.price 为单据原始价（BOX仓=每箱价），rawQty×箱价 = 个数×每个价，金额等价
                                 BigDecimal revertedCost = currentCost.multiply(totalWith)
-                                        .subtract(actualQtyBD.multiply(item.getPrice()))
+                                        .subtract(BigDecimal.valueOf(rawQty).multiply(item.getPrice()))
                                         .divide(totalWithout, 4, RoundingMode.HALF_UP)
                                         .setScale(2, RoundingMode.HALF_UP);
                                 if (revertedCost.compareTo(BigDecimal.ZERO) < 0) revertedCost = BigDecimal.ZERO;
