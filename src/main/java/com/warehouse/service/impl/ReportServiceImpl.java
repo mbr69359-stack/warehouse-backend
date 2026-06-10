@@ -7,6 +7,7 @@ import com.warehouse.mapper.InventoryLedgerMapper;
 import com.warehouse.mapper.InventoryMapper;
 import com.warehouse.mapper.OutOrderMapper;
 import com.warehouse.mapper.StockSnapshotMapper;
+import com.warehouse.mapper.WarehouseMapper;
 import com.warehouse.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ public class ReportServiceImpl implements ReportService {
     private final InventoryMapper inventoryMapper;
     private final InventoryLedgerMapper inventoryLedgerMapper;
     private final StockSnapshotMapper stockSnapshotMapper;
+    private final WarehouseMapper warehouseMapper;
     private final ExpenseMapper expenseMapper;
     private final DamageRecordMapper damageRecordMapper;
 
@@ -56,6 +58,11 @@ public class ReportServiceImpl implements ReportService {
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, Object> invStats = stockSnapshotMapper.selectDashboardInventoryStats(warehouseId);
         if (invStats != null) result.putAll(invStats);
+        Long totalBoxCount = stockSnapshotMapper.selectTotalBoxCount(warehouseId);
+        result.put("totalBoxCount", totalBoxCount != null ? totalBoxCount : 0L);
+        if (warehouseId != null) {
+            result.put("warehouseType", warehouseMapper.selectTypeById(warehouseId));
+        }
         if (warehouseId == null) {
             Map<String, Object> maxWh = stockSnapshotMapper.selectMaxWarehouse();
             if (maxWh != null) result.putAll(maxWh);

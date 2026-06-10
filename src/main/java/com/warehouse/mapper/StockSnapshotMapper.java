@@ -106,10 +106,21 @@ public interface StockSnapshotMapper {
     Map<String, Object> selectDashboardInventoryStats(@Param("warehouseId") Long warehouseId);
 
     @Select("SELECT ss.location_id AS maxWarehouseId, w.name AS maxWarehouseName, " +
-            "       CAST(SUM(ss.current_qty) AS SIGNED) AS maxWarehouseQty " +
+            "       CAST(SUM(ss.current_qty) AS SIGNED) AS maxWarehouseQty, " +
+            "       CAST(SUM(FLOOR(ss.current_qty / COALESCE(p.qty_per_box, 1))) AS SIGNED) AS maxWarehouseBoxQty " +
             "FROM stock_snapshot ss " +
             "JOIN warehouse w ON w.id = ss.location_id " +
+            "JOIN product p ON p.id = ss.product_id AND p.deleted = 0 " +
             "GROUP BY ss.location_id, w.name " +
             "ORDER BY SUM(ss.current_qty) DESC LIMIT 1")
     Map<String, Object> selectMaxWarehouse();
+
+    @Select("<script>" +
+            "SELECT COALESCE(SUM(FLOOR(ss.current_qty / COALESCE(p.qty_per_box, 1))), 0) AS totalBoxCount " +
+            "FROM stock_snapshot ss " +
+            "JOIN product p ON p.id = ss.product_id AND p.deleted = 0 " +
+            "JOIN warehouse w ON w.id = ss.location_id AND w.type = 'BOX' " +
+            "<if test='warehouseId != null'>WHERE ss.location_id = #{warehouseId} </if>" +
+            "</script>")
+    Long selectTotalBoxCount(@Param("warehouseId") Long warehouseId);
 }
