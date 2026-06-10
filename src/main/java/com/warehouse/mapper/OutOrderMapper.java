@@ -41,12 +41,13 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
     @Select("<script>" +
             "SELECT DATE(oo.confirm_time) AS statDate, " +
             "  COALESCE(SUM(CASE WHEN oo.type = 'SALE' THEN COALESCE(oi.actual_qty,oi.qty)*oi.price ELSE 0 END),0) AS revenue, " +
-            "  COALESCE(SUM(CASE WHEN oo.type = 'SALE' THEN COALESCE(oi.actual_qty,oi.qty)*(CASE WHEN oi.cost_price > 0 THEN oi.cost_price ELSE p.cost_price END) ELSE 0 END),0) AS cogs, " +
+            "  COALESCE(SUM(CASE WHEN oo.type = 'SALE' THEN COALESCE(oi.actual_qty,oi.qty)*(CASE WHEN w.type = 'BOX' THEN COALESCE(p.qty_per_box,1) ELSE 1 END)*(CASE WHEN oi.cost_price > 0 THEN oi.cost_price ELSE p.cost_price END) ELSE 0 END),0) AS cogs, " +
             "  COALESCE(SUM(CASE WHEN oo.type = 'REPLACEMENT_OUT' THEN COALESCE(oi.actual_qty,oi.qty)*(CASE WHEN oi.cost_price > 0 THEN oi.cost_price ELSE p.cost_price END) ELSE 0 END),0) AS replacementLoss, " +
             "  COALESCE(SUM(CASE WHEN oo.type = 'DAMAGE_OUT' THEN COALESCE(oi.actual_qty,oi.qty)*(CASE WHEN oi.cost_price > 0 THEN oi.cost_price ELSE p.cost_price END) ELSE 0 END),0) AS damageLoss " +
             "FROM out_order oo " +
             "JOIN out_order_item oi ON oi.order_id = oo.id " +
             "JOIN product p ON p.id = oi.product_id AND p.deleted = 0 " +
+            "JOIN warehouse w ON w.id = oo.warehouse_id " +
             "WHERE oo.status = 'CONFIRMED' AND oo.deleted = 0 " +
             "  AND oo.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "<if test='warehouseId != null'>AND oo.warehouse_id = #{warehouseId} </if>" +
@@ -60,12 +61,13 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
     @Select("<script>" +
             "SELECT oi.product_id AS productId, p.name AS productName, p.sku_code AS skuCode, " +
             "  COALESCE(SUM(COALESCE(oi.actual_qty,oi.qty) * oi.price), 0) AS revenue, " +
-            "  COALESCE(SUM(COALESCE(oi.actual_qty,oi.qty) * COALESCE(NULLIF(oi.cost_price,0), p.cost_price, 0)), 0) AS cogs, " +
+            "  COALESCE(SUM(COALESCE(oi.actual_qty,oi.qty) * (CASE WHEN w.type = 'BOX' THEN COALESCE(p.qty_per_box,1) ELSE 1 END) * COALESCE(NULLIF(oi.cost_price,0), p.cost_price, 0)), 0) AS cogs, " +
             "  COALESCE(SUM(COALESCE(oi.actual_qty,oi.qty) * oi.price), 0) - " +
-            "  COALESCE(SUM(COALESCE(oi.actual_qty,oi.qty) * COALESCE(NULLIF(oi.cost_price,0), p.cost_price, 0)), 0) AS grossProfit " +
+            "  COALESCE(SUM(COALESCE(oi.actual_qty,oi.qty) * (CASE WHEN w.type = 'BOX' THEN COALESCE(p.qty_per_box,1) ELSE 1 END) * COALESCE(NULLIF(oi.cost_price,0), p.cost_price, 0)), 0) AS grossProfit " +
             "FROM out_order oo " +
             "JOIN out_order_item oi ON oi.order_id = oo.id " +
             "JOIN product p ON p.id = oi.product_id AND p.deleted = 0 " +
+            "JOIN warehouse w ON w.id = oo.warehouse_id " +
             "WHERE oo.status = 'CONFIRMED' AND oo.deleted = 0 AND oo.type = 'SALE' " +
             "  AND oo.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "<if test='warehouseId != null'>AND oo.warehouse_id = #{warehouseId} </if>" +
