@@ -16,11 +16,17 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
 
     @Select("SELECT DATE(o.confirm_time) AS date, COUNT(DISTINCT o.id) AS count, " +
             "COALESCE(SUM(COALESCE(i.actual_qty, i.qty) * i.price), 0) AS amount, " +
-            "COALESCE(SUM(COALESCE(i.actual_qty, i.qty) * COALESCE(p.qty_per_box, 1)), 0) AS totalQty, " +
-            "COALESCE(SUM(COALESCE(i.actual_qty, i.qty)), 0) AS totalBoxes " +
+            "COALESCE(SUM(CASE WHEN w.type = 'BOX' AND o.type NOT IN ('DAMAGE_OUT','REPLACEMENT_OUT') " +
+            "  THEN COALESCE(i.actual_qty, i.qty) * COALESCE(p.qty_per_box, 1) " +
+            "  ELSE COALESCE(i.actual_qty, i.qty) END), 0) AS totalQty, " +
+            "ROUND(COALESCE(SUM(CASE WHEN w.type = 'BOX' AND o.type NOT IN ('DAMAGE_OUT','REPLACEMENT_OUT') " +
+            "  THEN COALESCE(i.actual_qty, i.qty) " +
+            "  WHEN COALESCE(p.qty_per_box, 0) > 0 THEN COALESCE(i.actual_qty, i.qty) / p.qty_per_box " +
+            "  ELSE 0 END), 0), 1) AS totalBoxes " +
             "FROM out_order o " +
             "LEFT JOIN out_order_item i ON o.id = i.order_id " +
             "LEFT JOIN product p ON p.id = i.product_id AND p.deleted = 0 " +
+            "LEFT JOIN warehouse w ON w.id = o.warehouse_id " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 " +
             "AND o.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "GROUP BY DATE(o.confirm_time) ORDER BY date")

@@ -17,11 +17,17 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
 
     @Select("SELECT DATE(o.confirm_time) AS date, COUNT(DISTINCT o.id) AS count, " +
             "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty) * i.price), 0) AS amount, " +
-            "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty) * COALESCE(p.qty_per_box, 1)), 0) AS totalQty, " +
-            "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty)), 0) AS totalBoxes " +
+            "COALESCE(SUM(CASE WHEN w.type = 'BOX' " +
+            "  THEN COALESCE(i.actual_qty, i.plan_qty) * COALESCE(p.qty_per_box, 1) " +
+            "  ELSE COALESCE(i.actual_qty, i.plan_qty) END), 0) AS totalQty, " +
+            "ROUND(COALESCE(SUM(CASE WHEN w.type = 'BOX' " +
+            "  THEN COALESCE(i.actual_qty, i.plan_qty) " +
+            "  WHEN COALESCE(p.qty_per_box, 0) > 0 THEN COALESCE(i.actual_qty, i.plan_qty) / p.qty_per_box " +
+            "  ELSE 0 END), 0), 1) AS totalBoxes " +
             "FROM in_order o " +
             "LEFT JOIN in_order_item i ON o.id = i.order_id " +
             "LEFT JOIN product p ON p.id = i.product_id AND p.deleted = 0 " +
+            "LEFT JOIN warehouse w ON w.id = o.warehouse_id " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 AND o.type != 'RETURN_IN' " +
             "AND o.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "GROUP BY DATE(o.confirm_time) ORDER BY date")
@@ -32,26 +38,36 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
     @Select("SELECT p.id AS productId, p.name AS productName, p.sku_code AS skuCode, p.unit, " +
             "       p.qty_per_box AS qtyPerBox, " +
             "       COALESCE(c.name, '未分类') AS categoryName, " +
-            "       COALESCE(i_in.inQty, 0) * COALESCE(p.qty_per_box, 1) AS inQty, " +
+            "       COALESCE(i_in.inQty, 0) AS inQty, " +
             "       COALESCE(i_in.inAmount, 0) AS inAmount, " +
-            "       COALESCE(i_out.outQty, 0) * COALESCE(p.qty_per_box, 1) AS outQty, " +
+            "       COALESCE(i_out.outQty, 0) AS outQty, " +
             "       COALESCE(i_out.outAmount, 0) AS outAmount " +
             "FROM product p " +
             "LEFT JOIN category c ON c.id = p.category_id AND c.deleted = 0 " +
             "LEFT JOIN ( " +
-            "    SELECT ii.product_id, SUM(COALESCE(ii.actual_qty, ii.plan_qty)) AS inQty, " +
+            "    SELECT ii.product_id, " +
+            "           SUM(CASE WHEN w.type = 'BOX' " +
+            "             THEN COALESCE(ii.actual_qty, ii.plan_qty) * COALESCE(p2.qty_per_box, 1) " +
+            "             ELSE COALESCE(ii.actual_qty, ii.plan_qty) END) AS inQty, " +
             "           SUM(COALESCE(ii.actual_qty, ii.plan_qty) * ii.price) AS inAmount " +
             "    FROM in_order_item ii " +
             "    JOIN in_order io ON io.id = ii.order_id " +
+            "    LEFT JOIN warehouse w ON w.id = io.warehouse_id " +
+            "    LEFT JOIN product p2 ON p2.id = ii.product_id " +
             "    WHERE io.status = 'CONFIRMED' AND io.deleted = 0 AND io.type != 'RETURN_IN' " +
             "      AND io.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "    GROUP BY ii.product_id " +
             ") i_in ON i_in.product_id = p.id " +
             "LEFT JOIN ( " +
-            "    SELECT oi.product_id, SUM(COALESCE(oi.actual_qty, oi.qty)) AS outQty, " +
+            "    SELECT oi.product_id, " +
+            "           SUM(CASE WHEN w.type = 'BOX' AND oo.type NOT IN ('DAMAGE_OUT','REPLACEMENT_OUT') " +
+            "             THEN COALESCE(oi.actual_qty, oi.qty) * COALESCE(p2.qty_per_box, 1) " +
+            "             ELSE COALESCE(oi.actual_qty, oi.qty) END) AS outQty, " +
             "           SUM(COALESCE(oi.actual_qty, oi.qty) * oi.price) AS outAmount " +
             "    FROM out_order_item oi " +
             "    JOIN out_order oo ON oo.id = oi.order_id " +
+            "    LEFT JOIN warehouse w ON w.id = oo.warehouse_id " +
+            "    LEFT JOIN product p2 ON p2.id = oi.product_id " +
             "    WHERE oo.status = 'CONFIRMED' AND oo.deleted = 0 " +
             "      AND oo.confirm_time BETWEEN #{startDate} AND #{endDate} " +
             "    GROUP BY oi.product_id " +
