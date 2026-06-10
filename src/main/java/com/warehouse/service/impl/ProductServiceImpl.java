@@ -52,7 +52,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public String update(ProductDTO dto) {
-        Product p = productMapper.selectById(dto.getId());
+        Product p = productMapper.selectByIdForUpdate(dto.getId());
         if (p == null) throw new BusinessException("商品不存在");
 
         boolean hadQtyPerBox = p.getQtyPerBox() != null && p.getQtyPerBox() > 0;
