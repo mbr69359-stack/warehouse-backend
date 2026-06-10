@@ -51,25 +51,31 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public void update(ProductDTO dto) {
+    public String update(ProductDTO dto) {
         Product p = productMapper.selectById(dto.getId());
         if (p == null) throw new BusinessException("商品不存在");
 
-        boolean qtyPerBoxChanged = dto.getQtyPerBox() != null
-                && dto.getQtyPerBox() > 0
+        boolean hadQtyPerBox = p.getQtyPerBox() != null && p.getQtyPerBox() > 0;
+        boolean newQtyValid = dto.getQtyPerBox() != null && dto.getQtyPerBox() > 0;
+        // 库存换算只允许发生一次（箱→个）；已设过再改只更新字段，避免对已是"个"的库存重复乘
+        boolean firstTimeSet = !hadQtyPerBox && newQtyValid;
+        boolean changedExisting = hadQtyPerBox && newQtyValid
                 && !dto.getQtyPerBox().equals(p.getQtyPerBox());
 
         p.setName(dto.getName()); p.setCategoryId(dto.getCategoryId());
         p.setUnit(dto.getUnit()); p.setPrice(dto.getPrice());
         p.setImage(dto.getImage()); p.setRemark(dto.getRemark());
         if (dto.getStatus() != null) p.setStatus(dto.getStatus());
-        if (dto.getQtyPerBox() != null && dto.getQtyPerBox() > 0)
-            p.setQtyPerBox(dto.getQtyPerBox());
+        if (newQtyValid) p.setQtyPerBox(dto.getQtyPerBox());
         productMapper.updateById(p);
 
-        if (qtyPerBoxChanged) {
+        if (firstTimeSet) {
             migrateBoxInventoryToPiece(p.getId(), dto.getQtyPerBox());
         }
+        if (changedExisting) {
+            return "每箱片数已修改，历史库存不会自动换算，如有偏差请通过盘点调整";
+        }
+        return null;
     }
 
     private void migrateBoxInventoryToPiece(Long productId, int qtyPerBox) {

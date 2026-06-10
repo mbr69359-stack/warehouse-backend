@@ -38,7 +38,11 @@ public class ProductController {
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> update(@PathVariable Long id, @RequestBody @Validated ProductDTO dto) {
-        dto.setId(id); productService.update(dto); return Result.success();
+        dto.setId(id);
+        String warning = productService.update(dto);
+        Result<Void> result = Result.success();
+        if (warning != null) result.setMessage(warning);
+        return result;
     }
 
     @DeleteMapping("/{id}")
