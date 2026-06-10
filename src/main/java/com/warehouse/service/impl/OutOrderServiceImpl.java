@@ -220,9 +220,10 @@ public class OutOrderServiceImpl implements OutOrderService {
                 outOrderItemMapper.updateById(item);
             }
 
-            // BOX仓库：箱数换算为个数（DAMAGE_OUT的qty已是个数，不换算）
+            // BOX仓库：箱数换算为个数（DAMAGE_OUT/REPLACEMENT_OUT的qty已是个数，不换算）
             boolean hasPrBox = latestProd != null && latestProd.getQtyPerBox() != null && latestProd.getQtyPerBox() > 0;
-            int pieceQty = (isBoxWarehouse && hasPrBox && !"DAMAGE_OUT".equals(order.getType()))
+            boolean qtyIsPiece = "DAMAGE_OUT".equals(order.getType()) || "REPLACEMENT_OUT".equals(order.getType());
+            int pieceQty = (isBoxWarehouse && hasPrBox && !qtyIsPiece)
                     ? qty * latestProd.getQtyPerBox() : qty;
 
             if ("DAMAGE_OUT".equals(order.getType())) {
@@ -338,10 +339,11 @@ public class OutOrderServiceImpl implements OutOrderService {
                     continue;
                 }
 
-                // BOX仓库：还原时与确认时用相同的换算（箱→个）
+                // BOX仓库：还原时与确认时用相同的换算（箱→个；DAMAGE_OUT/REPLACEMENT_OUT的qty已是个数，不换算）
                 com.warehouse.entity.Product restoreProd = productMapper.selectById(item.getProductId());
                 boolean delHasPrBox = restoreProd != null && restoreProd.getQtyPerBox() != null && restoreProd.getQtyPerBox() > 0;
-                int pieceRestoreQty = (delIsBox && delHasPrBox) ? restoreQty * restoreProd.getQtyPerBox() : restoreQty;
+                boolean delQtyIsPiece = "DAMAGE_OUT".equals(order.getType()) || "REPLACEMENT_OUT".equals(order.getType());
+                int pieceRestoreQty = (delIsBox && delHasPrBox && !delQtyIsPiece) ? restoreQty * restoreProd.getQtyPerBox() : restoreQty;
 
                 StockSnapshot srcSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
                 BigDecimal srcBefore = srcSnap != null ? srcSnap.getCurrentQty() : BigDecimal.ZERO;
