@@ -159,9 +159,11 @@ public class OutOrderServiceImpl implements OutOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
-        OutOrder order = outOrderMapper.selectByIdForUpdate(orderId);
+        LocalDateTime confirmTime = LocalDateTime.now();
+        int confirmed = outOrderMapper.markConfirmedFromDraft(orderId, confirmTime);
+        if (confirmed == 0) throw new BusinessException("该出库单已确认或已作废");
+        OutOrder order = outOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("出库单不存在");
-        if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("该出库单已确认");
 
         if ("TRANSFER".equals(order.getType())) {
             if (order.getTargetWarehouseId() == null) throw new BusinessException("调拨单缺少目标仓库");
@@ -176,12 +178,12 @@ public class OutOrderServiceImpl implements OutOrderService {
         List<OutOrderItem> items = outOrderItemMapper.selectList(
                 new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
 
+        java.util.Map<Long, Integer> actualQtyMap = new java.util.HashMap<>();
         if (actualItems != null && !actualItems.isEmpty()) {
-            java.util.Map<Long, Integer> qtyMap = new java.util.HashMap<>();
-            for (ConfirmItemDTO c : actualItems) qtyMap.put(c.getItemId(), c.getActualQty());
-            for (OutOrderItem item : items) {
-                Integer qty = qtyMap.get(item.getId());
-                if (qty != null) { item.setActualQty(qty); outOrderItemMapper.updateById(item); }
+            for (ConfirmItemDTO c : actualItems) {
+                if (c.getItemId() != null && c.getActualQty() != null) {
+                    actualQtyMap.put(c.getItemId(), c.getActualQty());
+                }
             }
         }
 
@@ -189,7 +191,7 @@ public class OutOrderServiceImpl implements OutOrderService {
         if ("DAMAGE_OUT".equals(order.getType())) {
             for (OutOrderItem item : items) {
                 int planned = item.getQty() != null ? item.getQty() : 0;
-                int actual  = item.getActualQty() != null ? item.getActualQty() : planned;
+                int actual  = actualQtyMap.containsKey(item.getId()) ? actualQtyMap.get(item.getId()) : planned;
                 if (actual != 0 && actual != planned) {
                     throw new BusinessException("损坏出库不支持部分核销，商品ID " + item.getProductId()
                             + " 计划 " + planned + " 件，实际填写 " + actual + " 件。"
@@ -207,18 +209,21 @@ public class OutOrderServiceImpl implements OutOrderService {
         java.util.Set<Long> writtenOffProductIds = new java.util.HashSet<>();
         int totalPieceQtyForCommission = 0;
         for (OutOrderItem item : items) {
-            // actualQty 为 null 时用计划数量兜底；明确填0表示不出库，直接跳过
-            int qty = item.getActualQty() != null ? item.getActualQty()
+            int qty = actualQtyMap.containsKey(item.getId()) ? actualQtyMap.get(item.getId())
                     : (item.getQty() != null ? item.getQty() : 0);
-            if (qty <= 0) continue;
+            item.setActualQty(qty);
+            if (qty <= 0) {
+                outOrderItemMapper.updateById(item);
+                continue;
+            }
 
             writtenOffProductIds.add(item.getProductId());
             // BUG-2 fix: 确认出库时重新读取最新成本价，避免草稿期间成本变化导致毛利偏差
             com.warehouse.entity.Product latestProd = productMapper.selectById(item.getProductId());
             if (latestProd != null && latestProd.getCostPrice() != null) {
                 item.setCostPrice(latestProd.getCostPrice());
-                outOrderItemMapper.updateById(item);
             }
+            outOrderItemMapper.updateById(item);
 
             // BOX仓库：箱数换算为个数（DAMAGE_OUT/REPLACEMENT_OUT的qty已是个数，不换算）
             boolean hasPrBox = latestProd != null && latestProd.getQtyPerBox() != null && latestProd.getQtyPerBox() > 0;
@@ -308,7 +313,7 @@ public class OutOrderServiceImpl implements OutOrderService {
         }
 
         order.setStatus("CONFIRMED");
-        order.setConfirmTime(LocalDateTime.now());
+        order.setConfirmTime(confirmTime);
         outOrderMapper.updateById(order);
     }
 
@@ -322,6 +327,7 @@ public class OutOrderServiceImpl implements OutOrderService {
     public void delete(Long orderId, Long operatorId) {
         OutOrder order = outOrderMapper.selectByIdForUpdate(orderId);
         if (order == null) throw new BusinessException("出库单不存在");
+        if ("VOIDED".equals(order.getStatus())) throw new BusinessException("该单据已作废，不能重复操作");
 
         if ("CONFIRMED".equals(order.getStatus())) {
             List<OutOrderItem> items = outOrderItemMapper.selectList(
@@ -345,9 +351,22 @@ public class OutOrderServiceImpl implements OutOrderService {
                 boolean delQtyIsPiece = "DAMAGE_OUT".equals(order.getType()) || "REPLACEMENT_OUT".equals(order.getType());
                 int pieceRestoreQty = (delIsBox && delHasPrBox && !delQtyIsPiece) ? restoreQty * restoreProd.getQtyPerBox() : restoreQty;
 
+                BigDecimal pieceRestoreQtyBD = BigDecimal.valueOf(pieceRestoreQty);
+                // 死锁修复：与 confirm() 保持一致的加锁顺序（先锁源仓快照，再锁目标仓快照），
+                // 避免 confirm 与 delete 并发时 AB-BA 互等死锁；两把锁都拿到、校验通过后才开始写入
                 StockSnapshot srcSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
+
+                StockSnapshot tgtSnap = null;
+                BigDecimal tgtBefore = BigDecimal.ZERO;
+                if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
+                    tgtSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getTargetWarehouseId());
+                    tgtBefore = tgtSnap != null ? tgtSnap.getCurrentQty() : BigDecimal.ZERO;
+                    if (tgtBefore.compareTo(pieceRestoreQtyBD) < 0)
+                        throw new BusinessException("该单货物已被使用，不能删除，请先盘点");
+                }
+
                 BigDecimal srcBefore = srcSnap != null ? srcSnap.getCurrentQty() : BigDecimal.ZERO;
-                BigDecimal srcAfter  = srcBefore.add(BigDecimal.valueOf(pieceRestoreQty));
+                BigDecimal srcAfter  = srcBefore.add(pieceRestoreQtyBD);
 
                 InventoryLedger cancelEntry = new InventoryLedger();
                 cancelEntry.setId(UUID.randomUUID().toString());
@@ -368,12 +387,6 @@ public class OutOrderServiceImpl implements OutOrderService {
                         srcSnap != null && srcSnap.getAlertQty() != null ? srcSnap.getAlertQty() : 0);
 
                 if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
-                    StockSnapshot tgtSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getTargetWarehouseId());
-                    BigDecimal tgtBefore = tgtSnap != null ? tgtSnap.getCurrentQty() : BigDecimal.ZERO;
-                    BigDecimal pieceRestoreQtyBD = BigDecimal.valueOf(pieceRestoreQty);
-                    if (tgtBefore.compareTo(pieceRestoreQtyBD) < 0)
-                        throw new BusinessException("目标仓库库存不足以撤销调拨，当前：" + tgtBefore + "，需撤回：" + pieceRestoreQty);
-
                     BigDecimal tgtAfter = tgtBefore.subtract(pieceRestoreQtyBD);
 
                     InventoryLedger transferCancelEntry = new InventoryLedger();
@@ -413,6 +426,10 @@ public class OutOrderServiceImpl implements OutOrderService {
                 uw.eq("out_order_id", orderId).set("status", "INBOUND_DONE").set("out_order_id", null);
                 customerReturnMapper.update(null, uw);
             }
+
+            // 已确认单作废而非删除：单据与明细保留，状态置为 VOIDED 供"已作废"页签查询
+            order.setStatus("VOIDED");
+            outOrderMapper.updateById(order);
         } else {
             // Bug 8 fix: DRAFT 状态的出库单被删时也要清理关联引用
             if ("DAMAGE_OUT".equals(order.getType())) {
@@ -426,10 +443,10 @@ public class OutOrderServiceImpl implements OutOrderService {
                 uw.eq("out_order_id", orderId).set("out_order_id", null);
                 customerReturnMapper.update(null, uw);
             }
-        }
 
-        outOrderItemMapper.delete(new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
-        outOrderMapper.deleteById(orderId);
+            outOrderItemMapper.delete(new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
+            outOrderMapper.deleteById(orderId);
+        }
     }
 
     private void autoCreateCommission(OutOrder order, int totalPieceQty, Long operatorId) {

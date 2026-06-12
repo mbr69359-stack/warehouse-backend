@@ -116,11 +116,12 @@ public interface StockSnapshotMapper {
     Map<String, Object> selectMaxWarehouse();
 
     @Select("<script>" +
-            "SELECT COALESCE(SUM(FLOOR(ss.current_qty / COALESCE(p.qty_per_box, 1))), 0) AS totalBoxCount " +
+            "SELECT COALESCE(SUM(FLOOR(ss.current_qty / COALESCE(p.qty_per_box, 1))), 0) AS totalBoxCount, " +
+            "       COALESCE(SUM(MOD(ss.current_qty, COALESCE(p.qty_per_box, 1))), 0) AS looseCount " +
             "FROM stock_snapshot ss " +
             "JOIN product p ON p.id = ss.product_id AND p.deleted = 0 " +
-            "JOIN warehouse w ON w.id = ss.location_id AND w.type = 'BOX' " +
+            "JOIN warehouse w ON w.id = ss.location_id " +
             "<if test='warehouseId != null'>WHERE ss.location_id = #{warehouseId} </if>" +
             "</script>")
-    Long selectTotalBoxCount(@Param("warehouseId") Long warehouseId);
+    Map<String, Object> selectTotalBoxStats(@Param("warehouseId") Long warehouseId);
 }

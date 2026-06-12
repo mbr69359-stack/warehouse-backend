@@ -33,18 +33,20 @@ public class ReportServiceImpl implements ReportService {
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Override
-    public List<Map<String, Object>> inDailyReport(LocalDate startDate, LocalDate endDate) {
+    public List<Map<String, Object>> inDailyReport(LocalDate startDate, LocalDate endDate, Long warehouseId) {
         return inOrderMapper.selectDailyReport(
             startDate.atStartOfDay().format(DT_FMT),
-            endDate.atTime(23, 59, 59).format(DT_FMT)
+            endDate.atTime(23, 59, 59).format(DT_FMT),
+            warehouseId
         );
     }
 
     @Override
-    public List<Map<String, Object>> outDailyReport(LocalDate startDate, LocalDate endDate) {
+    public List<Map<String, Object>> outDailyReport(LocalDate startDate, LocalDate endDate, Long warehouseId) {
         return outOrderMapper.selectDailyReport(
             startDate.atStartOfDay().format(DT_FMT),
-            endDate.atTime(23, 59, 59).format(DT_FMT)
+            endDate.atTime(23, 59, 59).format(DT_FMT),
+            warehouseId
         );
     }
 
@@ -58,8 +60,14 @@ public class ReportServiceImpl implements ReportService {
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, Object> invStats = stockSnapshotMapper.selectDashboardInventoryStats(warehouseId);
         if (invStats != null) result.putAll(invStats);
-        Long totalBoxCount = stockSnapshotMapper.selectTotalBoxCount(warehouseId);
-        result.put("totalBoxCount", totalBoxCount != null ? totalBoxCount : 0L);
+        Map<String, Object> boxStats = stockSnapshotMapper.selectTotalBoxStats(warehouseId);
+        if (boxStats != null) {
+            result.put("totalBoxCount", boxStats.getOrDefault("totalBoxCount", 0L));
+            result.put("looseCount", boxStats.getOrDefault("looseCount", 0L));
+        } else {
+            result.put("totalBoxCount", 0L);
+            result.put("looseCount", 0L);
+        }
         if (warehouseId != null) {
             result.put("warehouseType", warehouseMapper.selectTypeById(warehouseId));
         }

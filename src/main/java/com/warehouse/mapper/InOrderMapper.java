@@ -5,6 +5,8 @@ import com.warehouse.entity.InOrder;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -15,7 +17,12 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
     @Select("SELECT * FROM in_order WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     InOrder selectByIdForUpdate(@Param("id") Long id);
 
-    @Select("SELECT DATE(o.confirm_time) AS date, COUNT(DISTINCT o.id) AS count, " +
+    @Update("UPDATE in_order SET status = 'CONFIRMED', confirm_time = #{confirmTime} " +
+            "WHERE id = #{id} AND status = 'DRAFT' AND deleted = 0")
+    int markConfirmedFromDraft(@Param("id") Long id, @Param("confirmTime") LocalDateTime confirmTime);
+
+    @Select("<script>" +
+            "SELECT DATE(o.confirm_time) AS date, COUNT(DISTINCT o.id) AS count, " +
             "COALESCE(SUM(COALESCE(i.actual_qty, i.plan_qty) * i.price), 0) AS amount, " +
             "COALESCE(SUM(CASE WHEN w.type = 'BOX' " +
             "  THEN COALESCE(i.actual_qty, i.plan_qty) * COALESCE(p.qty_per_box, 1) " +
@@ -30,10 +37,13 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
             "LEFT JOIN warehouse w ON w.id = o.warehouse_id " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 AND o.type != 'RETURN_IN' " +
             "AND o.confirm_time BETWEEN #{startDate} AND #{endDate} " +
-            "GROUP BY DATE(o.confirm_time) ORDER BY date")
+            "<if test='warehouseId != null'>AND o.warehouse_id = #{warehouseId} </if>" +
+            "GROUP BY DATE(o.confirm_time) ORDER BY date" +
+            "</script>")
     List<Map<String, Object>> selectDailyReport(
             @Param("startDate") String startDate,
-            @Param("endDate") String endDate);
+            @Param("endDate") String endDate,
+            @Param("warehouseId") Long warehouseId);
 
     @Select("SELECT p.id AS productId, p.name AS productName, p.sku_code AS skuCode, p.unit, " +
             "       p.qty_per_box AS qtyPerBox, " +

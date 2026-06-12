@@ -20,15 +20,17 @@ public class ReportController {
     @GetMapping("/in")
     public Result<List<Map<String, Object>>> inReport(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        return Result.success(reportService.inDailyReport(startDate, endDate));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long warehouseId) {
+        return Result.success(reportService.inDailyReport(startDate, endDate, warehouseId));
     }
 
     @GetMapping("/out")
     public Result<List<Map<String, Object>>> outReport(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        return Result.success(reportService.outDailyReport(startDate, endDate));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long warehouseId) {
+        return Result.success(reportService.outDailyReport(startDate, endDate, warehouseId));
     }
 
     @GetMapping("/inventory")

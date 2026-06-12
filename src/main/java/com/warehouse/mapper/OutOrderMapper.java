@@ -5,6 +5,8 @@ import com.warehouse.entity.OutOrder;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -14,7 +16,12 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
     @Select("SELECT * FROM out_order WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     OutOrder selectByIdForUpdate(@Param("id") Long id);
 
-    @Select("SELECT DATE(o.confirm_time) AS date, COUNT(DISTINCT o.id) AS count, " +
+    @Update("UPDATE out_order SET status = 'CONFIRMED', confirm_time = #{confirmTime} " +
+            "WHERE id = #{id} AND status = 'DRAFT' AND deleted = 0")
+    int markConfirmedFromDraft(@Param("id") Long id, @Param("confirmTime") LocalDateTime confirmTime);
+
+    @Select("<script>" +
+            "SELECT DATE(o.confirm_time) AS date, COUNT(DISTINCT o.id) AS count, " +
             "COALESCE(SUM(COALESCE(i.actual_qty, i.qty) * i.price), 0) AS amount, " +
             "COALESCE(SUM(CASE WHEN w.type = 'BOX' AND o.type NOT IN ('DAMAGE_OUT','REPLACEMENT_OUT') " +
             "  THEN COALESCE(i.actual_qty, i.qty) * COALESCE(p.qty_per_box, 1) " +
@@ -29,10 +36,13 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
             "LEFT JOIN warehouse w ON w.id = o.warehouse_id " +
             "WHERE o.status = 'CONFIRMED' AND o.deleted = 0 " +
             "AND o.confirm_time BETWEEN #{startDate} AND #{endDate} " +
-            "GROUP BY DATE(o.confirm_time) ORDER BY date")
+            "<if test='warehouseId != null'>AND o.warehouse_id = #{warehouseId} </if>" +
+            "GROUP BY DATE(o.confirm_time) ORDER BY date" +
+            "</script>")
     List<Map<String, Object>> selectDailyReport(
             @Param("startDate") String startDate,
-            @Param("endDate") String endDate);
+            @Param("endDate") String endDate,
+            @Param("warehouseId") Long warehouseId);
 
     @Select("<script>" +
             "SELECT " +

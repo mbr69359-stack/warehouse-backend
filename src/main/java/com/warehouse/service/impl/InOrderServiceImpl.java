@@ -77,20 +77,21 @@ public class InOrderServiceImpl implements InOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
-        // Bug 1 fix: 加行锁，防止并发重复确认导致库存翻倍
-        InOrder order = inOrderMapper.selectByIdForUpdate(orderId);
+        LocalDateTime confirmTime = LocalDateTime.now();
+        int confirmed = inOrderMapper.markConfirmedFromDraft(orderId, confirmTime);
+        if (confirmed == 0) throw new BusinessException("该入库单已被确认");
+        InOrder order = inOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("入库单不存在");
-        if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("该入库单已确认");
 
         List<InOrderItem> items = inOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
 
+        java.util.Map<Long, Integer> actualQtyMap = new java.util.HashMap<>();
         if (actualItems != null && !actualItems.isEmpty()) {
-            java.util.Map<Long, Integer> qtyMap = new java.util.HashMap<>();
-            for (ConfirmItemDTO c : actualItems) qtyMap.put(c.getItemId(), c.getActualQty());
-            for (InOrderItem item : items) {
-                Integer qty = qtyMap.get(item.getId());
-                if (qty != null) { item.setActualQty(qty); inOrderItemMapper.updateById(item); }
+            for (ConfirmItemDTO c : actualItems) {
+                if (c.getItemId() != null && c.getActualQty() != null) {
+                    actualQtyMap.put(c.getItemId(), c.getActualQty());
+                }
             }
         }
 
@@ -98,8 +99,10 @@ public class InOrderServiceImpl implements InOrderService {
         boolean isBoxWarehouse = "BOX".equals(warehouseType);
 
         for (InOrderItem item : items) {
-            int rawQty = item.getActualQty() != null ? item.getActualQty()
+            int rawQty = actualQtyMap.containsKey(item.getId()) ? actualQtyMap.get(item.getId())
                     : (item.getPlanQty() != null ? item.getPlanQty() : 0);
+            item.setActualQty(rawQty);
+            inOrderItemMapper.updateById(item);
             if (rawQty <= 0) continue;
 
             // BOX仓且已设qtyPerBox：换算为个数；未设：保留箱数并标记BOX单位
@@ -190,7 +193,7 @@ public class InOrderServiceImpl implements InOrderService {
         }
 
         order.setStatus("CONFIRMED");
-        order.setConfirmTime(LocalDateTime.now());
+        order.setConfirmTime(confirmTime);
         inOrderMapper.updateById(order);
     }
 
@@ -241,7 +244,7 @@ public class InOrderServiceImpl implements InOrderService {
                     BigDecimal allWarehouseTotalBefore = snapshotMapper.selectTotalQtyByProductId(item.getProductId());
 
                     if (beforeQty.compareTo(actualQtyBD) < 0)
-                        throw new BusinessException("库存不足以撤销入库，当前库存：" + beforeQty + "，需撤回：" + actualQty);
+                        throw new BusinessException("该单货物已被使用，不能删除，请先盘点");
 
                     BigDecimal afterQty = beforeQty.subtract(actualQtyBD);
 
