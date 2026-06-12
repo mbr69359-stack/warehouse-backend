@@ -52,7 +52,21 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public Map<String, Object> inventorySummary(Long warehouseId) {
-        return inventoryMapper.selectInventorySummary(warehouseId);
+        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Object> summary = inventoryMapper.selectInventorySummary(warehouseId);
+        if (summary != null) result.putAll(summary);
+        Map<String, Object> boxStats = stockSnapshotMapper.selectTotalBoxStats(warehouseId);
+        if (boxStats != null) {
+            result.put("totalBoxCount", boxStats.getOrDefault("totalBoxCount", 0L));
+            result.put("looseCount", boxStats.getOrDefault("looseCount", 0L));
+        } else {
+            result.put("totalBoxCount", 0L);
+            result.put("looseCount", 0L);
+        }
+        if (warehouseId != null) {
+            result.put("warehouseType", warehouseMapper.selectTypeById(warehouseId));
+        }
+        return result;
     }
 
     @Override
