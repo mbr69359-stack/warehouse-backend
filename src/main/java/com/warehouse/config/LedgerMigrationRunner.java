@@ -65,6 +65,19 @@ public class LedgerMigrationRunner implements CommandLineRunner {
             "  PRIMARY KEY (product_id, location_id)" +
             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         );
+        jdbc.execute(
+            "CREATE TABLE IF NOT EXISTS sync_processed_log (" +
+            "  id            BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+            "  client_id     VARCHAR(128) NOT NULL," +
+            "  local_id      BIGINT       NOT NULL," +
+            "  success       TINYINT      NOT NULL," +
+            "  reject_reason VARCHAR(500) NULL," +
+            "  created_at    DATETIME     NOT NULL DEFAULT (UTC_TIMESTAMP())," +
+            "  processed_at  DATETIME     NOT NULL DEFAULT (UTC_TIMESTAMP())," +
+            "  UNIQUE KEY uq_sync_processed_client_local (client_id, local_id)" +
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+        ensureSyncProcessedLogSchema();
         createIndexIfMissing("inventory_ledger", "idx_ledger_prod_loc_time",
             "CREATE INDEX idx_ledger_prod_loc_time ON inventory_ledger(product_id, location_id, occurred_at)");
         createIndexIfMissing("inventory_ledger", "idx_ledger_document_no",
@@ -73,6 +86,88 @@ public class LedgerMigrationRunner implements CommandLineRunner {
             "CREATE INDEX idx_ledger_type ON inventory_ledger(type, occurred_at)");
 
         log.info("[LedgerMigration] 表结构检查完毕");
+    }
+
+    private void ensureSyncProcessedLogSchema() {
+        addColumnIfMissing("sync_processed_log", "client_id",
+            "ALTER TABLE sync_processed_log ADD COLUMN client_id VARCHAR(128) NULL");
+        addColumnIfMissing("sync_processed_log", "local_id",
+            "ALTER TABLE sync_processed_log ADD COLUMN local_id BIGINT NULL");
+        // 旧 schema 升级遗留的 client_id 为 NULL/空 的行属于旧幂等方案的废弃记录，直接清理，
+        // 避免下方 MODIFY COLUMN client_id NOT NULL 因存量 NULL 值导致启动失败
+        jdbc.update("DELETE FROM sync_processed_log WHERE client_id IS NULL OR client_id = ''");
+        if (columnExists("sync_processed_log", "uuid")) {
+            jdbc.execute("ALTER TABLE sync_processed_log MODIFY COLUMN uuid VARCHAR(64) NULL");
+        }
+
+        addColumnIfMissing("sync_processed_log", "id",
+            "ALTER TABLE sync_processed_log ADD COLUMN id BIGINT NULL");
+
+        Integer nullIds = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM sync_processed_log WHERE id IS NULL",
+            Integer.class);
+        if (nullIds != null && nullIds > 0) {
+            Long maxId = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) FROM sync_processed_log", Long.class);
+            jdbc.execute("SET @sync_processed_log_rownum := " + (maxId == null ? 0 : maxId));
+            jdbc.update(
+                "UPDATE sync_processed_log " +
+                "SET id = (@sync_processed_log_rownum := @sync_processed_log_rownum + 1) " +
+                "WHERE id IS NULL " +
+                "ORDER BY created_at, local_id");
+        }
+
+        List<String> primaryColumns = jdbc.queryForList(
+            "SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE " +
+            "WHERE TABLE_SCHEMA = DATABASE() " +
+            "  AND TABLE_NAME = 'sync_processed_log' " +
+            "  AND CONSTRAINT_NAME = 'PRIMARY' " +
+            "ORDER BY ORDINAL_POSITION",
+            String.class);
+        boolean idIsPrimary = primaryColumns.size() == 1 && "id".equalsIgnoreCase(primaryColumns.get(0));
+        if (!idIsPrimary) {
+            if (!primaryColumns.isEmpty()) {
+                jdbc.execute("ALTER TABLE sync_processed_log DROP PRIMARY KEY");
+            }
+            jdbc.execute("ALTER TABLE sync_processed_log MODIFY COLUMN id BIGINT NOT NULL");
+            jdbc.execute("ALTER TABLE sync_processed_log ADD PRIMARY KEY (id)");
+        }
+        jdbc.execute("ALTER TABLE sync_processed_log MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT");
+        jdbc.execute("ALTER TABLE sync_processed_log MODIFY COLUMN client_id VARCHAR(128) NOT NULL");
+
+        jdbc.update(
+            "DELETE newer FROM sync_processed_log newer " +
+            "JOIN sync_processed_log older " +
+            "  ON newer.client_id = older.client_id " +
+            " AND newer.local_id = older.local_id " +
+            " AND newer.id > older.id " +
+            "WHERE newer.local_id IS NOT NULL");
+        dropSingleColumnLocalIdUniqueIndexes();
+        createIndexIfMissing("sync_processed_log", "uq_sync_processed_client_local",
+            "ALTER TABLE sync_processed_log ADD UNIQUE KEY uq_sync_processed_client_local (client_id, local_id)");
+    }
+
+    private void dropSingleColumnLocalIdUniqueIndexes() {
+        List<String> indexes = jdbc.queryForList(
+            "SELECT INDEX_NAME " +
+            "FROM information_schema.STATISTICS " +
+            "WHERE TABLE_SCHEMA = DATABASE() " +
+            "  AND TABLE_NAME = 'sync_processed_log' " +
+            "  AND NON_UNIQUE = 0 " +
+            "  AND INDEX_NAME <> 'PRIMARY' " +
+            "GROUP BY INDEX_NAME " +
+            "HAVING COUNT(*) = 1 AND MAX(COLUMN_NAME = 'local_id') = 1",
+            String.class);
+        for (String index : indexes) {
+            jdbc.execute("ALTER TABLE sync_processed_log DROP INDEX `" + index.replace("`", "``") + "`");
+        }
+    }
+
+    private boolean columnExists(String table, String column) {
+        Integer cnt = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+            Integer.class, table, column);
+        return cnt != null && cnt > 0;
     }
 
     private void ensureProductUuid() {

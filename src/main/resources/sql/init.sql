@@ -346,6 +346,17 @@ CREATE TABLE IF NOT EXISTS stock_snapshot (
     PRIMARY KEY (product_id, location_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS sync_processed_log (
+    id            BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    client_id     VARCHAR(128) NOT NULL,
+    local_id      BIGINT       NOT NULL,
+    success       TINYINT      NOT NULL,
+    reject_reason VARCHAR(500) NULL,
+    created_at    DATETIME     NOT NULL DEFAULT (UTC_TIMESTAMP()),
+    processed_at  DATETIME     NOT NULL DEFAULT (UTC_TIMESTAMP()),
+    UNIQUE KEY uq_sync_processed_client_local (client_id, local_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- =============================================
 -- v5：期初流水迁移（幂等，每次启动自动执行）
 -- 把现有 inventory.qty 补写为 opening 流水，

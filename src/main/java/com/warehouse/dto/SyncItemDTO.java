@@ -8,6 +8,7 @@ import javax.validation.constraints.NotNull;
 @Data
 public class SyncItemDTO {
     private Long localId;
+    private String clientId;
     @NotBlank(message = "type cannot be blank")
     private String type;       // "IN" or "OUT"
     @NotNull(message = "warehouseId cannot be null")
