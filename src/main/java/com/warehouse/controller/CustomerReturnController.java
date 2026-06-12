@@ -42,6 +42,14 @@ public class CustomerReturnController {
         return Result.success(customerReturnService.create(dto, jwtUser.getUsername(), jwtUser.getUserId()));
     }
 
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
+    public Result<Void> delete(@PathVariable Long id,
+                               @AuthenticationPrincipal UserDetails user) {
+        customerReturnService.deleteDraft(id, ((JwtUserDetails) user).getUserId());
+        return Result.success();
+    }
+
     // 步骤一：查看退货入库明细（含 itemId，供前端填写实际数量）
     @GetMapping("/{id}/in-order-items")
     public Result<List<InOrderItem>> inOrderItems(@PathVariable Long id) {

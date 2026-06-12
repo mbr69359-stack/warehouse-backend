@@ -201,4 +201,43 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
         if (ret.getInOrderId() == null) throw new BusinessException("退货入库单不存在");
         return inOrderItemMapper.selectItemsWithProduct(ret.getInOrderId());
     }
+
+    @Override
+    @Transactional
+    public void deleteDraft(Long returnId, Long operatorId) {
+        CustomerReturn ret = customerReturnMapper.selectByIdForUpdate(returnId);
+        if (ret == null) throw new BusinessException("退换货单不存在");
+        if (!"DRAFT".equals(ret.getStatus())) throw new BusinessException("只有草稿退换货单可以删除");
+
+        if (ret.getInOrderId() != null) {
+            InOrder inOrder = inOrderMapper.selectByIdForUpdate(ret.getInOrderId());
+            if (inOrder != null && !"DRAFT".equals(inOrder.getStatus())) {
+                throw new BusinessException("退货入库单已流转，不能删除草稿");
+            }
+        }
+
+        if (ret.getOutOrderId() != null) {
+            OutOrder outOrder = outOrderMapper.selectByIdForUpdate(ret.getOutOrderId());
+            if (outOrder != null && !"DRAFT".equals(outOrder.getStatus())) {
+                throw new BusinessException("补发出库单已流转，不能删除草稿");
+            }
+        }
+
+        customerReturnItemMapper.delete(new LambdaQueryWrapper<CustomerReturnItem>()
+                .eq(CustomerReturnItem::getReturnId, returnId));
+
+        if (ret.getInOrderId() != null) {
+            inOrderItemMapper.delete(new LambdaQueryWrapper<InOrderItem>()
+                    .eq(InOrderItem::getOrderId, ret.getInOrderId()));
+            inOrderMapper.deleteById(ret.getInOrderId());
+        }
+
+        if (ret.getOutOrderId() != null) {
+            outOrderItemMapper.delete(new LambdaQueryWrapper<OutOrderItem>()
+                    .eq(OutOrderItem::getOrderId, ret.getOutOrderId()));
+            outOrderMapper.deleteById(ret.getOutOrderId());
+        }
+
+        customerReturnMapper.deleteById(returnId);
+    }
 }

@@ -13,6 +13,7 @@ public interface CustomerReturnService {
     Long create(CustomerReturnDTO dto, String createdBy, Long operatorId);
     List<CustomerReturnItem> listItems(Long returnId);
     List<InOrderItem> listInOrderItems(Long returnId);
+    void deleteDraft(Long returnId, Long operatorId);
     void confirmInbound(Long returnId, List<ConfirmItemDTO> items, Long operatorId);
     void confirm(Long returnId, List<ConfirmItemDTO> items, Long operatorId);
 }
