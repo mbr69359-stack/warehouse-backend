@@ -73,7 +73,7 @@ public class ProductServiceImpl implements ProductService {
             migrateBoxInventoryToPiece(p.getId(), dto.getQtyPerBox());
         }
         if (changedExisting) {
-            return "每箱片数已修改，历史库存不会自动换算，如有偏差请通过盘点调整";
+            return "每箱个数已修改，历史库存不会自动换算，如有偏差请通过盘点调整";
         }
         return null;
     }

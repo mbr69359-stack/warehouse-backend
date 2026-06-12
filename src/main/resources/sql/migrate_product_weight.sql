@@ -13,6 +13,6 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 SET @q = (SELECT COUNT(*) FROM information_schema.COLUMNS
           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product' AND COLUMN_NAME = 'qty_per_box');
 SET @sql2 = IF(@q = 0,
-    'ALTER TABLE product ADD COLUMN qty_per_box INT DEFAULT NULL COMMENT ''每箱片数''',
+    'ALTER TABLE product ADD COLUMN qty_per_box INT DEFAULT NULL COMMENT ''每箱个数''',
     'SELECT ''qty_per_box already exists'' AS info');
 PREPARE stmt FROM @sql2; EXECUTE stmt; DEALLOCATE PREPARE stmt;
