@@ -10,7 +10,7 @@ import java.util.List;
 @Mapper
 public interface OutOrderItemMapper extends BaseMapper<OutOrderItem> {
 
-    @Select("SELECT oi.*, p.name AS product_name, p.sku_code " +
+    @Select("SELECT oi.*, p.name AS product_name, p.sku_code, p.weight_per_box, p.qty_per_box " +
             "FROM out_order_item oi " +
             "LEFT JOIN product p ON p.id = oi.product_id " +
             "WHERE oi.order_id = #{orderId}")

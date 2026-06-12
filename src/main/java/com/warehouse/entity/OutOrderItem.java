@@ -23,4 +23,8 @@ public class OutOrderItem {
     private String productName;
     @TableField(exist = false)
     private String skuCode;
+    @TableField(exist = false)
+    private BigDecimal weightPerBox;
+    @TableField(exist = false)
+    private Integer qtyPerBox;
 }

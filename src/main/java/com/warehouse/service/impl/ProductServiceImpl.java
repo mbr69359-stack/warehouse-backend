@@ -45,6 +45,9 @@ public class ProductServiceImpl implements ProductService {
         p.setCategoryId(dto.getCategoryId()); p.setUnit(dto.getUnit());
         p.setPrice(dto.getPrice()); p.setImage(dto.getImage());
         p.setRemark(dto.getRemark());
+        p.setSpec(dto.getSpec()); p.setBarcode(dto.getBarcode());
+        p.setWeightPerBox(dto.getWeightPerBox());
+        if (dto.getQtyPerBox() != null && dto.getQtyPerBox() > 0) p.setQtyPerBox(dto.getQtyPerBox());
         p.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
         productMapper.insert(p);
     }
@@ -65,6 +68,9 @@ public class ProductServiceImpl implements ProductService {
         p.setName(dto.getName()); p.setCategoryId(dto.getCategoryId());
         p.setUnit(dto.getUnit()); p.setPrice(dto.getPrice());
         p.setImage(dto.getImage()); p.setRemark(dto.getRemark());
+        p.setSpec(dto.getSpec()); p.setBarcode(dto.getBarcode());
+        // 成本价由入库加权平均维护，不接受手动修改
+        p.setWeightPerBox(dto.getWeightPerBox());
         if (dto.getStatus() != null) p.setStatus(dto.getStatus());
         if (newQtyValid) p.setQtyPerBox(dto.getQtyPerBox());
         productMapper.updateById(p);

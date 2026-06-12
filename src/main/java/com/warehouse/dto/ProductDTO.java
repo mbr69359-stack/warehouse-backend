@@ -24,4 +24,5 @@ public class ProductDTO {
     private String remark;
     private Integer status;
     private Integer qtyPerBox;  // 每箱个数
+    private BigDecimal weightPerBox;  // 每箱重量(kg)
 }
