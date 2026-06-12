@@ -34,6 +34,19 @@ public class DamageRecordServiceImpl implements DamageRecordService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long create(DamageRecordDTO dto, String createdBy) {
+        // 数量校验：拒绝 null/0/负数，避免无效登记及后续空快照路径的 NPE
+        if (dto.getQty() == null || dto.getQty() < 1)
+            throw new BusinessException("破损数量必须大于0");
+
+        // BOX 仓登记破损前必须先设置每箱数量（与 transfer() 校验口径一致），PIECE 仓不要求
+        String warehouseType = warehouseMapper.selectTypeById(dto.getWarehouseId());
+        if ("BOX".equals(warehouseType)) {
+            Product product = productMapper.selectById(dto.getProductId());
+            if (product == null) throw new BusinessException("商品不存在");
+            if (product.getQtyPerBox() == null || product.getQtyPerBox() <= 0)
+                throw new BusinessException("请先在商品管理中设置每箱数量");
+        }
+
         // Bug #4 fix: 登记损坏时立即扣减库存，防止已损坏货物再次被销售
         StockSnapshot snap = snapshotMapper.selectOneForUpdate(dto.getProductId(), dto.getWarehouseId());
         BigDecimal currentQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
