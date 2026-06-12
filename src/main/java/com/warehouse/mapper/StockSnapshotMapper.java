@@ -94,6 +94,35 @@ public interface StockSnapshotMapper {
             "WHERE s.alert_qty != i.alert_qty")
     int syncAlertQtyFromInventory();
 
+    /**
+     * 库存对账自检：按 (product_id, location_id) 汇总流水与快照逐行对比。
+     * 任一侧有记录都出现：流水聚合 LEFT JOIN 快照，再 UNION ALL 只在快照存在的行；
+     * 商品含已删的也显示（名称加"(已删)"标记）；diff = ledgerSum - currentQty，差异大的排前面。
+     */
+    @Select("SELECT a.* FROM (" +
+            "  SELECT lg.product_id AS productId, " +
+            "         CASE WHEN p.deleted = 1 THEN CONCAT(p.name, '(已删)') ELSE p.name END AS productName, " +
+            "         p.sku_code AS skuCode, lg.location_id AS warehouseId, w.name AS warehouseName, " +
+            "         lg.ledger_sum AS ledgerSum, COALESCE(ss.current_qty, 0) AS currentQty, " +
+            "         lg.ledger_sum - COALESCE(ss.current_qty, 0) AS diff " +
+            "  FROM (SELECT product_id, location_id, SUM(change_qty) AS ledger_sum " +
+            "        FROM inventory_ledger GROUP BY product_id, location_id) lg " +
+            "  LEFT JOIN stock_snapshot ss ON ss.product_id = lg.product_id AND ss.location_id = lg.location_id " +
+            "  LEFT JOIN product p ON p.id = lg.product_id " +
+            "  LEFT JOIN warehouse w ON w.id = lg.location_id " +
+            "  UNION ALL " +
+            "  SELECT ss.product_id, " +
+            "         CASE WHEN p.deleted = 1 THEN CONCAT(p.name, '(已删)') ELSE p.name END, " +
+            "         p.sku_code, ss.location_id, w.name, " +
+            "         0, ss.current_qty, 0 - ss.current_qty " +
+            "  FROM stock_snapshot ss " +
+            "  LEFT JOIN product p ON p.id = ss.product_id " +
+            "  LEFT JOIN warehouse w ON w.id = ss.location_id " +
+            "  WHERE NOT EXISTS (SELECT 1 FROM inventory_ledger il " +
+            "                    WHERE il.product_id = ss.product_id AND il.location_id = ss.location_id) " +
+            ") a ORDER BY ABS(a.diff) DESC, a.warehouseId, a.productId")
+    List<Map<String, Object>> selectLedgerSnapshotAudit();
+
     @Select("<script>" +
             "SELECT COALESCE(SUM(ss.current_qty), 0) AS totalQty, " +
             "       COALESCE(SUM(ss.current_qty * p.cost_price), 0) AS totalValue, " +

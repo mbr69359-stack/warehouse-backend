@@ -31,6 +31,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -146,6 +147,19 @@ public class InventoryServiceImpl implements InventoryService {
             item.getQty() != null && item.getQty() < item.getAlertQty()
         ));
         return items;
+    }
+
+    @Override
+    public List<Map<String, Object>> auditLedgerSnapshot() {
+        return stockSnapshotMapper.selectLedgerSnapshotAudit();
+    }
+
+    @Override
+    @Transactional
+    public void rebuildSnapshotFromLedger() {
+        // 从流水重建快照（rebuild 本身按流水求和覆盖快照，账实天然一致），再同步预警值
+        stockSnapshotMapper.rebuildAllFromLedger();
+        stockSnapshotMapper.syncAlertQtyFromInventory();
     }
 
     @Override

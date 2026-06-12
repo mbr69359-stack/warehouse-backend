@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Validated
 @RestController
@@ -76,6 +77,20 @@ public class InventoryController {
             @RequestParam(defaultValue = "all") String type,
             @RequestParam(required = false) Long warehouseId) {
         return Result.success(inventoryService.getChartData(type, warehouseId));
+    }
+
+    /** 库存对账自检：逐行对比流水汇总与快照，diff != 0 即账实不符 */
+    @GetMapping("/audit")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<List<Map<String, Object>>> audit() {
+        return Result.success(inventoryService.auditLedgerSnapshot());
+    }
+
+    /** 账实不符时从流水重建快照（幂等），并同步预警值 */
+    @PostMapping("/audit/rebuild")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<Void> auditRebuild() {
+        inventoryService.rebuildSnapshotFromLedger(); return Result.success();
     }
 
     @PostMapping("/import")
