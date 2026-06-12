@@ -50,7 +50,9 @@ public interface InventoryLedgerMapper extends BaseMapper<InventoryLedger> {
 
     @Select("<script>" +
             "SELECT DATE_FORMAT(il.occurred_at, '%Y-%m-%d %H:%i') AS occurredAt, il.type, " +
+            "       il.product_id AS productId, il.location_id AS warehouseId, " +
             "       p.name AS productName, p.sku_code AS skuCode, p.unit, " +
+            "       p.qty_per_box AS qtyPerBox, w.type AS warehouseType, " +
             "       il.qty_unit AS qtyUnit, " +
             "       il.change_qty AS changeQty, il.document_no AS documentNo, " +
             "       il.operator, il.note, " +
