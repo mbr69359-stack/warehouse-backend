@@ -4,8 +4,6 @@ import com.warehouse.entity.InOrder;
 import com.warehouse.entity.InOrderItem;
 import com.warehouse.entity.InventoryLedger;
 import com.warehouse.entity.OutOrder;
-import com.warehouse.entity.OutOrderItem;
-import com.warehouse.entity.Product;
 import com.warehouse.entity.StockSnapshot;
 import com.warehouse.mapper.CustomerMapper;
 import com.warehouse.mapper.CustomerReturnMapper;
@@ -97,10 +95,9 @@ class OrderDeleteInventoryLedgerIsolationTest {
         item.setPlanQty(3);
         item.setActualQty(3);
         when(inOrderItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
-        when(warehouseMapper.selectTypeById(warehouseId)).thenReturn("PIECE");
-        when(productMapper.selectById(productId)).thenReturn(new Product());
+        when(ledgerMapper.selectList(any())).thenReturn(
+                Collections.singletonList(originalLedger(productId, warehouseId, "inbound", "3")));
         when(snapshotMapper.selectOneForUpdate(productId, warehouseId)).thenReturn(snapshot(productId, warehouseId, "20"));
-        when(snapshotMapper.selectTotalQtyByProductId(productId)).thenReturn(new BigDecimal("20"));
 
         inOrderService.delete(SAME_ORDER_ID, 7L);
 
@@ -109,6 +106,7 @@ class OrderDeleteInventoryLedgerIsolationTest {
         assertThat(ledger.getValue().getType()).isEqualTo("inbound_cancel");
         assertThat(ledger.getValue().getDocumentNo()).isEqualTo(inOrderNo);
         assertThat(ledger.getValue().getChangeQty()).isEqualByComparingTo("-3");
+        verify(ledgerMapper).selectList(any());
         verifyNoMoreInteractions(ledgerMapper);
     }
 
@@ -126,14 +124,8 @@ class OrderDeleteInventoryLedgerIsolationTest {
         order.setStatus("CONFIRMED");
         when(outOrderMapper.selectByIdForUpdate(SAME_ORDER_ID)).thenReturn(order);
 
-        OutOrderItem item = new OutOrderItem();
-        item.setOrderId(SAME_ORDER_ID);
-        item.setProductId(productId);
-        item.setQty(3);
-        item.setActualQty(3);
-        when(outOrderItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
-        when(warehouseMapper.selectTypeById(warehouseId)).thenReturn("PIECE");
-        when(productMapper.selectById(productId)).thenReturn(new Product());
+        when(ledgerMapper.selectList(any())).thenReturn(
+                Collections.singletonList(originalLedger(productId, warehouseId, "outbound", "-3")));
         when(snapshotMapper.selectOneForUpdate(productId, warehouseId)).thenReturn(snapshot(productId, warehouseId, "5"));
 
         outOrderService.delete(SAME_ORDER_ID, 8L);
@@ -143,7 +135,17 @@ class OrderDeleteInventoryLedgerIsolationTest {
         assertThat(ledger.getValue().getType()).isEqualTo("outbound_cancel");
         assertThat(ledger.getValue().getDocumentNo()).isEqualTo(outOrderNo);
         assertThat(ledger.getValue().getChangeQty()).isEqualByComparingTo("3");
+        verify(ledgerMapper).selectList(any());
         verifyNoMoreInteractions(ledgerMapper);
+    }
+
+    private InventoryLedger originalLedger(Long productId, Long locationId, String type, String changeQty) {
+        InventoryLedger entry = new InventoryLedger();
+        entry.setProductId(productId);
+        entry.setLocationId(locationId);
+        entry.setType(type);
+        entry.setChangeQty(new BigDecimal(changeQty));
+        return entry;
     }
 
     private StockSnapshot snapshot(Long productId, Long locationId, String qty) {

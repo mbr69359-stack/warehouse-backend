@@ -330,81 +330,87 @@ public class OutOrderServiceImpl implements OutOrderService {
         if ("VOIDED".equals(order.getStatus())) throw new BusinessException("该单据已作废，不能重复操作");
 
         if ("CONFIRMED".equals(order.getStatus())) {
-            List<OutOrderItem> items = outOrderItemMapper.selectList(
-                    new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, orderId));
-            String delWhType = warehouseMapper.selectTypeById(order.getWarehouseId());
-            boolean delIsBox = "BOX".equals(delWhType);
-            for (OutOrderItem item : items) {
-                int restoreQty = item.getActualQty() != null ? item.getActualQty()
-                        : (item.getQty() != null ? item.getQty() : 0);
-                if (restoreQty <= 0) continue;
-
-                if ("DAMAGE_OUT".equals(order.getType())) {
-                    // Bug #4 fix: 库存已在损坏记录 create() 时扣减，损坏记录回 PENDING 后扣减仍然有效，
-                    // 删除 DAMAGE_OUT 不还原库存（否则已损坏货物会重新出现在可用库存中）
-                    continue;
+            // Bug #4 fix: DAMAGE_OUT 确认时不写流水（库存在破损登记时已扣减），
+            // 作废也不还原库存——否则已损坏货物会重新出现在可用库存中
+            if (!"DAMAGE_OUT".equals(order.getType())) {
+                // 按原始流水冲销：当初每条流水扣多少就反向冲多少，
+                // 不用当前每箱个数反推——确认后若改过每箱个数，反推会还原错数
+                List<InventoryLedger> originals = ledgerMapper.selectList(
+                        new LambdaQueryWrapper<InventoryLedger>()
+                                .eq(InventoryLedger::getDocumentNo, order.getOrderNo())
+                                .in(InventoryLedger::getType,
+                                        "outbound", "transfer_out", "replacement_out", "transfer_in"));
+                List<InventoryLedger> sourceEntries = new java.util.ArrayList<>();
+                java.util.Map<Long, java.util.Deque<InventoryLedger>> targetByProduct = new java.util.HashMap<>();
+                for (InventoryLedger original : originals) {
+                    if ("transfer_in".equals(original.getType())) {
+                        targetByProduct.computeIfAbsent(original.getProductId(),
+                                k -> new java.util.ArrayDeque<>()).add(original);
+                    } else {
+                        sourceEntries.add(original);
+                    }
                 }
 
-                // BOX仓库：还原时与确认时用相同的换算（箱→个；DAMAGE_OUT/REPLACEMENT_OUT的qty已是个数，不换算）
-                com.warehouse.entity.Product restoreProd = productMapper.selectById(item.getProductId());
-                boolean delHasPrBox = restoreProd != null && restoreProd.getQtyPerBox() != null && restoreProd.getQtyPerBox() > 0;
-                boolean delQtyIsPiece = "DAMAGE_OUT".equals(order.getType()) || "REPLACEMENT_OUT".equals(order.getType());
-                int pieceRestoreQty = (delIsBox && delHasPrBox && !delQtyIsPiece) ? restoreQty * restoreProd.getQtyPerBox() : restoreQty;
-
-                BigDecimal pieceRestoreQtyBD = BigDecimal.valueOf(pieceRestoreQty);
-                // 死锁修复：与 confirm() 保持一致的加锁顺序（先锁源仓快照，再锁目标仓快照），
-                // 避免 confirm 与 delete 并发时 AB-BA 互等死锁；两把锁都拿到、校验通过后才开始写入
-                StockSnapshot srcSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
-
-                StockSnapshot tgtSnap = null;
-                BigDecimal tgtBefore = BigDecimal.ZERO;
-                if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
-                    tgtSnap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getTargetWarehouseId());
-                    tgtBefore = tgtSnap != null ? tgtSnap.getCurrentQty() : BigDecimal.ZERO;
-                    if (tgtBefore.compareTo(pieceRestoreQtyBD) < 0)
-                        throw new BusinessException("该单货物已被使用，不能删除，请先盘点");
-                }
-
-                BigDecimal srcBefore = srcSnap != null ? srcSnap.getCurrentQty() : BigDecimal.ZERO;
-                BigDecimal srcAfter  = srcBefore.add(pieceRestoreQtyBD);
-
-                InventoryLedger cancelEntry = new InventoryLedger();
-                cancelEntry.setId(UUID.randomUUID().toString());
-                cancelEntry.setProductId(item.getProductId());
-                cancelEntry.setLocationId(order.getWarehouseId());
-                cancelEntry.setChangeQty(new BigDecimal(pieceRestoreQty));
-                cancelEntry.setType("outbound_cancel");
-                cancelEntry.setDocumentNo(order.getOrderNo());
                 // Bug 9 fix: 记录真实操作人
-                cancelEntry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
-                cancelEntry.setNote("撤销出库单 " + order.getOrderNo());
-                cancelEntry.setOccurredAt(LocalDateTime.now());
-                cancelEntry.setSynced(1);
-                ledgerMapper.insert(cancelEntry);
+                String operator = operatorId != null ? String.valueOf(operatorId) : "system";
+                for (InventoryLedger src : sourceEntries) {
+                    BigDecimal restoreQty = src.getChangeQty().negate(); // 原扣减为负数，冲销为正
 
-                snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
-                        srcAfter,
-                        srcSnap != null && srcSnap.getAlertQty() != null ? srcSnap.getAlertQty() : 0);
+                    // 死锁修复：与 confirm() 保持一致的加锁顺序（先锁源仓快照，再锁目标仓快照），
+                    // 避免 confirm 与 delete 并发时 AB-BA 互等死锁；两把锁都拿到、校验通过后才开始写入
+                    StockSnapshot srcSnap = snapshotMapper.selectOneForUpdate(src.getProductId(), src.getLocationId());
 
-                if ("TRANSFER".equals(order.getType()) && order.getTargetWarehouseId() != null) {
-                    BigDecimal tgtAfter = tgtBefore.subtract(pieceRestoreQtyBD);
+                    InventoryLedger tgt = null;
+                    StockSnapshot tgtSnap = null;
+                    BigDecimal tgtBefore = BigDecimal.ZERO;
+                    java.util.Deque<InventoryLedger> targetQueue = targetByProduct.get(src.getProductId());
+                    if (targetQueue != null) tgt = targetQueue.poll();
+                    if (tgt != null) {
+                        tgtSnap = snapshotMapper.selectOneForUpdate(tgt.getProductId(), tgt.getLocationId());
+                        tgtBefore = tgtSnap != null ? tgtSnap.getCurrentQty() : BigDecimal.ZERO;
+                        if (tgtBefore.compareTo(tgt.getChangeQty()) < 0)
+                            throw new BusinessException("该单货物已被使用，不能删除，请先盘点");
+                    }
 
-                    InventoryLedger transferCancelEntry = new InventoryLedger();
-                    transferCancelEntry.setId(UUID.randomUUID().toString());
-                    transferCancelEntry.setProductId(item.getProductId());
-                    transferCancelEntry.setLocationId(order.getTargetWarehouseId());
-                    transferCancelEntry.setChangeQty(new BigDecimal(-pieceRestoreQty));
-                    transferCancelEntry.setType("transfer_cancel");
-                    transferCancelEntry.setDocumentNo(order.getOrderNo());
-                    transferCancelEntry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
-                    transferCancelEntry.setNote("撤销调拨，还原至仓库 " + order.getWarehouseId());
-                    transferCancelEntry.setOccurredAt(LocalDateTime.now());
-                    transferCancelEntry.setSynced(1);
-                    ledgerMapper.insert(transferCancelEntry);
+                    BigDecimal srcBefore = srcSnap != null ? srcSnap.getCurrentQty() : BigDecimal.ZERO;
 
-                    snapshotMapper.upsert(item.getProductId(), order.getTargetWarehouseId(),
-                            tgtAfter,
-                            tgtSnap != null && tgtSnap.getAlertQty() != null ? tgtSnap.getAlertQty() : 0);
+                    InventoryLedger cancelEntry = new InventoryLedger();
+                    cancelEntry.setId(UUID.randomUUID().toString());
+                    cancelEntry.setProductId(src.getProductId());
+                    cancelEntry.setLocationId(src.getLocationId());
+                    cancelEntry.setChangeQty(restoreQty);
+                    cancelEntry.setType("outbound_cancel");
+                    cancelEntry.setDocumentNo(order.getOrderNo());
+                    cancelEntry.setOperator(operator);
+                    cancelEntry.setQtyUnit(src.getQtyUnit());
+                    cancelEntry.setNote("作废出库单 " + order.getOrderNo());
+                    cancelEntry.setOccurredAt(LocalDateTime.now());
+                    cancelEntry.setSynced(1);
+                    ledgerMapper.insert(cancelEntry);
+
+                    snapshotMapper.upsert(src.getProductId(), src.getLocationId(),
+                            srcBefore.add(restoreQty),
+                            srcSnap != null && srcSnap.getAlertQty() != null ? srcSnap.getAlertQty() : 0);
+
+                    if (tgt != null) {
+                        InventoryLedger transferCancelEntry = new InventoryLedger();
+                        transferCancelEntry.setId(UUID.randomUUID().toString());
+                        transferCancelEntry.setProductId(tgt.getProductId());
+                        transferCancelEntry.setLocationId(tgt.getLocationId());
+                        transferCancelEntry.setChangeQty(tgt.getChangeQty().negate());
+                        transferCancelEntry.setType("transfer_cancel");
+                        transferCancelEntry.setDocumentNo(order.getOrderNo());
+                        transferCancelEntry.setOperator(operator);
+                        transferCancelEntry.setQtyUnit(tgt.getQtyUnit());
+                        transferCancelEntry.setNote("作废调拨，还原至仓库 " + order.getWarehouseId());
+                        transferCancelEntry.setOccurredAt(LocalDateTime.now());
+                        transferCancelEntry.setSynced(1);
+                        ledgerMapper.insert(transferCancelEntry);
+
+                        snapshotMapper.upsert(tgt.getProductId(), tgt.getLocationId(),
+                                tgtBefore.subtract(tgt.getChangeQty()),
+                                tgtSnap != null && tgtSnap.getAlertQty() != null ? tgtSnap.getAlertQty() : 0);
+                    }
                 }
             }
 

@@ -79,7 +79,7 @@ public class InOrderServiceImpl implements InOrderService {
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
         LocalDateTime confirmTime = LocalDateTime.now();
         int confirmed = inOrderMapper.markConfirmedFromDraft(orderId, confirmTime);
-        if (confirmed == 0) throw new BusinessException("该入库单已被确认");
+        if (confirmed == 0) throw new BusinessException("该入库单已确认或已作废，请勿重复操作");
         InOrder order = inOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("入库单不存在");
 
@@ -215,63 +215,74 @@ public class InOrderServiceImpl implements InOrderService {
     public void delete(Long orderId, Long operatorId) {
         InOrder order = inOrderMapper.selectByIdForUpdate(orderId);
         if (order == null) throw new BusinessException("入库单不存在");
+        if ("VOIDED".equals(order.getStatus())) throw new BusinessException("该单据已作废，不能重复操作");
 
         if ("CONFIRMED".equals(order.getStatus())) {
             // RETURN_IN 的 confirmInbound() 有意跳过了库存增加（退货视为损坏直接核销），
-            // 所以删除时也不能扣减——库存从未被加进来过。
+            // 所以作废时也不能扣减——库存从未被加进来过。
             if (!"RETURN_IN".equals(order.getType())) {
                 List<InOrderItem> items = inOrderItemMapper.selectList(
                         new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
-                // Bug #1 fix: 撤销时需与 confirm() 保持相同的 BOX→个数换算逻辑
-                String warehouseType = warehouseMapper.selectTypeById(order.getWarehouseId());
-                boolean isBoxWarehouse = "BOX".equals(warehouseType);
+
+                // 按原始流水冲销：当初每条 inbound 流水加多少就冲多少。
+                // 不用当前每箱个数反推——确认后若改过每箱个数，反推会还原错数。
+                // 确认时实收>0 的行必写流水，查不到流水说明该行未实际入库，无需冲销
+                List<InventoryLedger> originals = ledgerMapper.selectList(
+                        new LambdaQueryWrapper<InventoryLedger>()
+                                .eq(InventoryLedger::getDocumentNo, order.getOrderNo())
+                                .eq(InventoryLedger::getType, "inbound"));
+                java.util.Map<Long, java.util.Deque<InventoryLedger>> originalsByProduct = new java.util.HashMap<>();
+                for (InventoryLedger original : originals) {
+                    originalsByProduct.computeIfAbsent(original.getProductId(),
+                            k -> new java.util.ArrayDeque<>()).add(original);
+                }
 
                 for (InOrderItem item : items) {
-                    int rawQty = item.getActualQty() != null ? item.getActualQty()
-                            : (item.getPlanQty() != null ? item.getPlanQty() : 0);
-                    if (rawQty <= 0) continue;
+                    java.util.Deque<InventoryLedger> queue = originalsByProduct.get(item.getProductId());
+                    InventoryLedger original = queue != null ? queue.poll() : null;
+                    if (original == null) continue;
 
-                    // Bug #1 fix: BOX仓且设了每箱数量时，箱数×每箱数量 = 当初实际入库的个数
-                    Product prod = productMapper.selectById(item.getProductId());
-                    boolean hasQtyPerBox = prod != null && prod.getQtyPerBox() != null && prod.getQtyPerBox() > 0;
-                    int actualQty = (isBoxWarehouse && hasQtyPerBox) ? rawQty * prod.getQtyPerBox() : rawQty;
+                    BigDecimal reverseQty = original.getChangeQty();
+                    Long locationId = original.getLocationId();
 
-                    StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), order.getWarehouseId());
+                    StockSnapshot snap = snapshotMapper.selectOneForUpdate(item.getProductId(), locationId);
                     BigDecimal beforeQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
-                    BigDecimal actualQtyBD = BigDecimal.valueOf(actualQty);
 
-                    // Bug #2 fix: 还原成本价时用全仓库存量做权重（与 confirm() 口径对称）
-                    BigDecimal allWarehouseTotalBefore = snapshotMapper.selectTotalQtyByProductId(item.getProductId());
-
-                    if (beforeQty.compareTo(actualQtyBD) < 0)
+                    if (beforeQty.compareTo(reverseQty) < 0)
                         throw new BusinessException("该单货物已被使用，不能删除，请先盘点");
 
-                    BigDecimal afterQty = beforeQty.subtract(actualQtyBD);
+                    BigDecimal afterQty = beforeQty.subtract(reverseQty);
 
                     InventoryLedger entry = new InventoryLedger();
                     entry.setId(UUID.randomUUID().toString());
                     entry.setProductId(item.getProductId());
-                    entry.setLocationId(order.getWarehouseId());
-                    entry.setChangeQty(new BigDecimal(-actualQty));
+                    entry.setLocationId(locationId);
+                    entry.setChangeQty(reverseQty.negate());
                     entry.setType("inbound_cancel");
                     entry.setDocumentNo(order.getOrderNo());
                     entry.setOperator(operatorId != null ? String.valueOf(operatorId) : "system");
-                    entry.setNote("撤销入库单 " + order.getOrderNo());
+                    entry.setQtyUnit(original.getQtyUnit());
+                    entry.setNote("作废入库单 " + order.getOrderNo());
                     entry.setOccurredAt(LocalDateTime.now());
                     entry.setSynced(1);
                     ledgerMapper.insert(entry);
 
-                    snapshotMapper.upsert(item.getProductId(), order.getWarehouseId(),
+                    snapshotMapper.upsert(item.getProductId(), locationId,
                             afterQty, snap != null && snap.getAlertQty() != null ? snap.getAlertQty() : 0);
 
-                    // 还原加权平均成本价：只有原进货有进价才需要还原
+                    // 还原加权平均成本价：只有原进货有进价才需要还原。
+                    // 金额 = 原始箱数 × 单据原始价，个数 = 原始流水个数，均与当前每箱个数无关
                     if (item.getPrice() != null && item.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+                        int rawQty = item.getActualQty() != null ? item.getActualQty()
+                                : (item.getPlanQty() != null ? item.getPlanQty() : 0);
+                        Product prod = productMapper.selectById(item.getProductId());
                         if (prod != null && prod.getCostPrice() != null) {
-                            BigDecimal totalWith    = allWarehouseTotalBefore;                       // 撤销前全仓合计
-                            BigDecimal totalWithout = allWarehouseTotalBefore.subtract(actualQtyBD); // 撤销后全仓合计
+                            // Bug #2 fix: 用全仓库存量做权重（与 confirm() 口径对称）；
+                            // 此时快照已扣减，冲销前合计 = 当前合计 + 冲销量
+                            BigDecimal totalWithout = snapshotMapper.selectTotalQtyByProductId(item.getProductId()); // 冲销后全仓合计
+                            BigDecimal totalWith    = totalWithout.add(reverseQty);                                  // 冲销前全仓合计
                             BigDecimal currentCost  = prod.getCostPrice();
                             if (totalWithout.compareTo(BigDecimal.ZERO) > 0) {
-                                // item.price 为单据原始价（BOX仓=每箱价），rawQty×箱价 = 个数×每个价，金额等价
                                 BigDecimal revertedCost = currentCost.multiply(totalWith)
                                         .subtract(BigDecimal.valueOf(rawQty).multiply(item.getPrice()))
                                         .divide(totalWithout, 4, RoundingMode.HALF_UP)
@@ -288,7 +299,7 @@ public class InOrderServiceImpl implements InOrderService {
                                     history.setNewPrice(revertedCost);
                                     history.setChangedAt(LocalDateTime.now());
                                     history.setOrderNo(order.getOrderNo());
-                                    history.setQtyAdded(-actualQty);
+                                    history.setQtyAdded(-reverseQty.intValue());
                                     costHistoryMapper.insert(history);
                                 }
                             }
@@ -297,7 +308,7 @@ public class InOrderServiceImpl implements InOrderService {
                 }
             }
 
-            // Bug 5 fix: 退货入库单被删时，回退关联的退换货单状态，并清理自动生成的损坏记录
+            // Bug 5 fix: 退货入库单作废时，回退关联的退换货单状态，并清理自动生成的损坏记录
             if ("RETURN_IN".equals(order.getType())) {
                 CustomerReturn customerReturn = customerReturnMapper.selectOne(
                         new LambdaQueryWrapper<CustomerReturn>().eq(CustomerReturn::getInOrderId, orderId));
@@ -311,10 +322,14 @@ public class InOrderServiceImpl implements InOrderService {
                             .isNull(DamageRecord::getOutOrderId));
                 }
             }
-        }
 
-        inOrderItemMapper.delete(new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
-        inOrderMapper.deleteById(orderId);
+            // 红冲：已确认单作废保留单据与明细，状态置 VOIDED 供"已作废"页签追溯
+            order.setStatus("VOIDED");
+            inOrderMapper.updateById(order);
+        } else {
+            inOrderItemMapper.delete(new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
+            inOrderMapper.deleteById(orderId);
+        }
     }
 
     private String generateNo() {

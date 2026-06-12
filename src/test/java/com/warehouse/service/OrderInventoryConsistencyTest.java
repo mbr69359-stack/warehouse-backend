@@ -48,8 +48,7 @@ import static org.mockito.Mockito.when;
 class OrderInventoryConsistencyTest {
 
     private static final String USED_MESSAGE = "\u8be5\u5355\u8d27\u7269\u5df2\u88ab\u4f7f\u7528";
-    private static final String CONFIRMED_MESSAGE = "\u5df2\u88ab\u786e\u8ba4";
-    private static final String OUT_CONFIRMED_OR_VOIDED_MESSAGE = "\u5df2\u786e\u8ba4\u6216\u5df2\u4f5c\u5e9f";
+    private static final String CONFIRMED_OR_VOIDED_MESSAGE = "\u5df2\u786e\u8ba4\u6216\u5df2\u4f5c\u5e9f";
     private static final String VOIDED_MESSAGE = "\u5df2\u4f5c\u5e9f\uff0c\u4e0d\u80fd\u91cd\u590d\u64cd\u4f5c";
 
     @Mock
@@ -209,14 +208,13 @@ class OrderInventoryConsistencyTest {
     }
 
     @Test
-    void outDeleteConfirmedSaleRestoresActualQtyInsteadOfPlanQty() {
+    void outDeleteConfirmedSaleRestoresOriginalLedgerQty() {
         Long orderId = 103L;
         OutOrder order = outOrder(orderId, "CONFIRMED", "SALE", 1L, null, "OUT-103");
-        OutOrderItem item = outItem(203L, orderId, 303L, 10, 3);
 
         when(outOrderMapper.selectByIdForUpdate(orderId)).thenReturn(order);
-        when(outOrderItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
-        when(outWarehouseMapper.selectTypeById(1L)).thenReturn("PIECE");
+        when(outLedgerMapper.selectList(any())).thenReturn(
+                Collections.singletonList(ledgerEntry(303L, 1L, "outbound", "-3")));
         when(outSnapshotMapper.selectOneForUpdate(303L, 1L)).thenReturn(snapshot(303L, 1L, 7));
 
         outOrderService.delete(orderId, 9L);
@@ -228,14 +226,15 @@ class OrderInventoryConsistencyTest {
     }
 
     @Test
-    void inDeleteConfirmedOrderRollsBackActualQtyWrittenFromPlan() {
+    void inDeleteConfirmedOrderRollsBackOriginalLedgerQty() {
         Long orderId = 110L;
         InOrder order = inOrder(orderId, "CONFIRMED", "PURCHASE", 1L, "IN-110");
         InOrderItem item = inItem(210L, orderId, 310L, 8, 8);
 
         when(inOrderMapper.selectByIdForUpdate(orderId)).thenReturn(order);
         when(inOrderItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
-        when(inWarehouseMapper.selectTypeById(1L)).thenReturn("PIECE");
+        when(inLedgerMapper.selectList(any())).thenReturn(
+                Collections.singletonList(ledgerEntry(310L, 1L, "inbound", "8")));
         when(inSnapshotMapper.selectOneForUpdate(310L, 1L)).thenReturn(snapshot(310L, 1L, 8));
 
         inOrderService.delete(orderId, 9L);
@@ -247,14 +246,36 @@ class OrderInventoryConsistencyTest {
     }
 
     @Test
-    void outDeleteConfirmedOrderRollsBackActualQtyWrittenFromPlan() {
+    void inDeleteReversesLedgerQtyEvenAfterQtyPerBoxChanged() {
+        // 关键回归：确认时每箱48入了480个，之后每箱个数改成50，作废仍须按原流水冲480
+        Long orderId = 114L;
+        InOrder order = inOrder(orderId, "CONFIRMED", "PURCHASE", 1L, "IN-114");
+        InOrderItem item = inItem(214L, orderId, 314L, 10, 10); // 单据数量是10箱
+
+        when(inOrderMapper.selectByIdForUpdate(orderId)).thenReturn(order);
+        when(inOrderItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
+        when(inLedgerMapper.selectList(any())).thenReturn(
+                Collections.singletonList(ledgerEntry(314L, 1L, "inbound", "480")));
+        when(inSnapshotMapper.selectOneForUpdate(314L, 1L)).thenReturn(snapshot(314L, 1L, 480));
+
+        inOrderService.delete(orderId, 9L);
+
+        verify(inSnapshotMapper).upsert(314L, 1L, BigDecimal.ZERO, 0);
+        ArgumentCaptor<InventoryLedger> ledgerCaptor = ArgumentCaptor.forClass(InventoryLedger.class);
+        verify(inLedgerMapper).insert(ledgerCaptor.capture());
+        assertThat(ledgerCaptor.getValue().getChangeQty()).isEqualByComparingTo("-480");
+        // 数量冲销全程不读商品表（不依赖当前每箱个数）；item 无进价也无成本还原
+        verifyNoInteractions(inProductMapper);
+    }
+
+    @Test
+    void outDeleteConfirmedOrderRollsBackOriginalLedgerQty() {
         Long orderId = 111L;
         OutOrder order = outOrder(orderId, "CONFIRMED", "SALE", 1L, null, "OUT-111");
-        OutOrderItem item = outItem(211L, orderId, 311L, 8, 8);
 
         when(outOrderMapper.selectByIdForUpdate(orderId)).thenReturn(order);
-        when(outOrderItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
-        when(outWarehouseMapper.selectTypeById(1L)).thenReturn("PIECE");
+        when(outLedgerMapper.selectList(any())).thenReturn(
+                Collections.singletonList(ledgerEntry(311L, 1L, "outbound", "-8")));
         when(outSnapshotMapper.selectOneForUpdate(311L, 1L)).thenReturn(snapshot(311L, 1L, 2));
 
         outOrderService.delete(orderId, 9L);
@@ -273,7 +294,8 @@ class OrderInventoryConsistencyTest {
 
         when(inOrderMapper.selectByIdForUpdate(orderId)).thenReturn(order);
         when(inOrderItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
-        when(inWarehouseMapper.selectTypeById(1L)).thenReturn("PIECE");
+        when(inLedgerMapper.selectList(any())).thenReturn(
+                Collections.singletonList(ledgerEntry(304L, 1L, "inbound", "5")));
         when(inSnapshotMapper.selectOneForUpdate(304L, 1L)).thenReturn(snapshot(304L, 1L, 2));
 
         assertThatThrownBy(() -> inOrderService.delete(orderId, 9L))
@@ -288,11 +310,11 @@ class OrderInventoryConsistencyTest {
     void outDeleteConfirmedTransferFailsBeforeRollbackWhenTargetStockWasUsed() {
         Long orderId = 105L;
         OutOrder order = outOrder(orderId, "CONFIRMED", "TRANSFER", 1L, 2L, "OUT-105");
-        OutOrderItem item = outItem(205L, orderId, 305L, 10, 6);
 
         when(outOrderMapper.selectByIdForUpdate(orderId)).thenReturn(order);
-        when(outOrderItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
-        when(outWarehouseMapper.selectTypeById(1L)).thenReturn("PIECE");
+        when(outLedgerMapper.selectList(any())).thenReturn(java.util.Arrays.asList(
+                ledgerEntry(305L, 1L, "transfer_out", "-6"),
+                ledgerEntry(305L, 2L, "transfer_in", "6")));
         // 与 confirm() 一致的加锁顺序：先锁源仓（只锁不写），再锁目标仓做余额校验
         when(outSnapshotMapper.selectOneForUpdate(305L, 1L)).thenReturn(snapshot(305L, 1L, 0));
         when(outSnapshotMapper.selectOneForUpdate(305L, 2L)).thenReturn(snapshot(305L, 2L, 3));
@@ -312,7 +334,7 @@ class OrderInventoryConsistencyTest {
 
         assertThatThrownBy(() -> inOrderService.confirm(orderId, Collections.emptyList(), 9L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining(CONFIRMED_MESSAGE);
+                .hasMessageContaining(CONFIRMED_OR_VOIDED_MESSAGE);
 
         verifyNoInteractions(inOrderItemMapper, inSnapshotMapper, inLedgerMapper);
     }
@@ -324,7 +346,7 @@ class OrderInventoryConsistencyTest {
 
         assertThatThrownBy(() -> outOrderService.confirm(orderId, Collections.emptyList(), 9L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining(OUT_CONFIRMED_OR_VOIDED_MESSAGE);
+                .hasMessageContaining(CONFIRMED_OR_VOIDED_MESSAGE);
 
         verifyNoInteractions(outOrderItemMapper, outSnapshotMapper, outLedgerMapper);
     }
@@ -333,11 +355,10 @@ class OrderInventoryConsistencyTest {
     void outDeleteConfirmedOrderMarksVoidedAndKeepsOrderAndItems() {
         Long orderId = 112L;
         OutOrder order = outOrder(orderId, "CONFIRMED", "SALE", 1L, null, "OUT-112");
-        OutOrderItem item = outItem(212L, orderId, 312L, 5, 5);
 
         when(outOrderMapper.selectByIdForUpdate(orderId)).thenReturn(order);
-        when(outOrderItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
-        when(outWarehouseMapper.selectTypeById(1L)).thenReturn("PIECE");
+        when(outLedgerMapper.selectList(any())).thenReturn(
+                Collections.singletonList(ledgerEntry(312L, 1L, "outbound", "-5")));
         when(outSnapshotMapper.selectOneForUpdate(312L, 1L)).thenReturn(snapshot(312L, 1L, 0));
 
         outOrderService.delete(orderId, 9L);
@@ -347,6 +368,42 @@ class OrderInventoryConsistencyTest {
         assertThat(orderCaptor.getValue().getStatus()).isEqualTo("VOIDED");
         verify(outOrderMapper, never()).deleteById(orderId);
         verify(outOrderItemMapper, never()).delete(any());
+    }
+
+    @Test
+    void inDeleteConfirmedOrderMarksVoidedAndKeepsOrderAndItems() {
+        Long orderId = 115L;
+        InOrder order = inOrder(orderId, "CONFIRMED", "PURCHASE", 1L, "IN-115");
+        InOrderItem item = inItem(215L, orderId, 315L, 5, 5);
+
+        when(inOrderMapper.selectByIdForUpdate(orderId)).thenReturn(order);
+        when(inOrderItemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
+        when(inLedgerMapper.selectList(any())).thenReturn(
+                Collections.singletonList(ledgerEntry(315L, 1L, "inbound", "5")));
+        when(inSnapshotMapper.selectOneForUpdate(315L, 1L)).thenReturn(snapshot(315L, 1L, 5));
+
+        inOrderService.delete(orderId, 9L);
+
+        ArgumentCaptor<InOrder> orderCaptor = ArgumentCaptor.forClass(InOrder.class);
+        verify(inOrderMapper).updateById(orderCaptor.capture());
+        assertThat(orderCaptor.getValue().getStatus()).isEqualTo("VOIDED");
+        verify(inOrderMapper, never()).deleteById(orderId);
+        verify(inOrderItemMapper, never()).delete(any());
+    }
+
+    @Test
+    void inDeleteVoidedOrderRejectedWithoutTouchingInventory() {
+        Long orderId = 116L;
+        InOrder order = inOrder(orderId, "VOIDED", "PURCHASE", 1L, "IN-116");
+        when(inOrderMapper.selectByIdForUpdate(orderId)).thenReturn(order);
+
+        assertThatThrownBy(() -> inOrderService.delete(orderId, 9L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining(VOIDED_MESSAGE);
+
+        verifyNoInteractions(inOrderItemMapper, inSnapshotMapper, inLedgerMapper);
+        verify(inOrderMapper, never()).updateById(any(InOrder.class));
+        verify(inOrderMapper, never()).deleteById(orderId);
     }
 
     @Test
@@ -410,6 +467,15 @@ class OrderInventoryConsistencyTest {
         item.setQty(qty);
         item.setActualQty(actualQty);
         return item;
+    }
+
+    private static InventoryLedger ledgerEntry(Long productId, Long locationId, String type, String changeQty) {
+        InventoryLedger entry = new InventoryLedger();
+        entry.setProductId(productId);
+        entry.setLocationId(locationId);
+        entry.setType(type);
+        entry.setChangeQty(new BigDecimal(changeQty));
+        return entry;
     }
 
     private static StockSnapshot snapshot(Long productId, Long locationId, int currentQty) {
