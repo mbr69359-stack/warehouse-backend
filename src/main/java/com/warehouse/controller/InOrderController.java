@@ -87,6 +87,15 @@ public class InOrderController {
         inOrderService.delete(id, getUid(user)); return Result.success();
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public Result<Void> update(@PathVariable Long id,
+                               @RequestBody @Validated InOrderDTO dto,
+                               @AuthenticationPrincipal UserDetails user) {
+        inOrderService.update(id, dto, getUid(user));
+        return Result.success();
+    }
+
     private Long getUid(UserDetails user) {
         return ((JwtUserDetails) user).getUserId();
     }

@@ -76,6 +76,35 @@ public class InOrderServiceImpl implements InOrderService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void update(Long id, InOrderDTO dto, Long operatorId) {
+        InOrder order = inOrderMapper.selectByIdForUpdate(id);
+        if (order == null) throw new BusinessException("入库单不存在");
+        if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("只有草稿入库单可以编辑");
+        if ("RETURN_IN".equals(order.getType())) throw new BusinessException("该入库单由系统生成，不能编辑");
+        if ("RETURN_IN".equals(dto.getType())) throw new BusinessException("入库类型不能改为退货入库");
+
+        order.setWarehouseId(dto.getWarehouseId());
+        order.setSupplierId(dto.getSupplierId());
+        order.setType(dto.getType());
+        order.setRemark(dto.getRemark());
+        inOrderMapper.updateById(order);
+
+        inOrderItemMapper.delete(new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, id));
+        if (dto.getItems() != null) {
+            for (InOrderDTO.Item i : dto.getItems()) {
+                InOrderItem item = new InOrderItem();
+                item.setOrderId(id);
+                item.setProductId(i.getProductId());
+                item.setPlanQty(i.getPlanQty() != null ? i.getPlanQty() : 0);
+                item.setActualQty(i.getActualQty());
+                item.setPrice(i.getPrice());
+                inOrderItemMapper.insert(item);
+            }
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
         LocalDateTime confirmTime = LocalDateTime.now();
         int confirmed = inOrderMapper.markConfirmedFromDraft(orderId, confirmTime);
