@@ -16,4 +16,5 @@ public interface CustomerReturnService {
     void deleteDraft(Long returnId, Long operatorId);
     void confirmInbound(Long returnId, List<ConfirmItemDTO> items, Long operatorId);
     void confirm(Long returnId, List<ConfirmItemDTO> items, Long operatorId);
+    void update(Long returnId, CustomerReturnDTO dto, Long operatorId);
 }

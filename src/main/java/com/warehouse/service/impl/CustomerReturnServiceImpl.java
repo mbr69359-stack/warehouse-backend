@@ -118,6 +118,72 @@ public class CustomerReturnServiceImpl implements CustomerReturnService {
 
     @Override
     @Transactional
+    public void update(Long returnId, CustomerReturnDTO dto, Long operatorId) {
+        if (dto.getItems() == null || dto.getItems().isEmpty())
+            throw new BusinessException("退换商品明细不能为空");
+
+        CustomerReturn ret = customerReturnMapper.selectByIdForUpdate(returnId);
+        if (ret == null) throw new BusinessException("退换货单不存在");
+        if (!"DRAFT".equals(ret.getStatus())) throw new BusinessException("只有草稿退换货单可以编辑");
+
+        InOrder inOrder = ret.getInOrderId() != null ? inOrderMapper.selectByIdForUpdate(ret.getInOrderId()) : null;
+        if (inOrder != null && !"DRAFT".equals(inOrder.getStatus()))
+            throw new BusinessException("退货入库单已流转，不能编辑草稿");
+        OutOrder outOrder = ret.getOutOrderId() != null ? outOrderMapper.selectByIdForUpdate(ret.getOutOrderId()) : null;
+        if (outOrder != null && !"DRAFT".equals(outOrder.getStatus()))
+            throw new BusinessException("补发出库单已流转，不能编辑草稿");
+
+        // 1. 退货入库草稿：表头 + 明细重建
+        if (inOrder != null) {
+            inOrder.setWarehouseId(dto.getWarehouseId());
+            inOrder.setRemark(dto.getRemark());
+            inOrderMapper.updateById(inOrder);
+            inOrderItemMapper.delete(new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, inOrder.getId()));
+            for (CustomerReturnDTO.ItemDTO item : dto.getItems()) {
+                InOrderItem inItem = new InOrderItem();
+                inItem.setOrderId(inOrder.getId());
+                inItem.setProductId(item.getProductId());
+                inItem.setPlanQty(item.getQty());
+                inItem.setActualQty(0);
+                inItem.setPrice(BigDecimal.ZERO);
+                inOrderItemMapper.insert(inItem);
+            }
+        }
+
+        // 2. 补发出库草稿：表头 + 明细重建
+        if (outOrder != null) {
+            outOrder.setWarehouseId(dto.getWarehouseId());
+            outOrder.setRemark(dto.getRemark());
+            outOrderMapper.updateById(outOrder);
+            outOrderItemMapper.delete(new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, outOrder.getId()));
+            for (CustomerReturnDTO.ItemDTO item : dto.getItems()) {
+                OutOrderItem outItem = new OutOrderItem();
+                outItem.setOrderId(outOrder.getId());
+                outItem.setProductId(item.getProductId());
+                outItem.setQty(item.getQty());
+                outItem.setPrice(BigDecimal.ZERO);
+                Product prod = productMapper.selectById(item.getProductId());
+                outItem.setCostPrice(prod != null && prod.getCostPrice() != null ? prod.getCostPrice() : BigDecimal.ZERO);
+                outOrderItemMapper.insert(outItem);
+            }
+        }
+
+        // 3. 退换货主单：表头 + 明细重建（exchangeNo / 各单号 / status 不变）
+        ret.setWarehouseId(dto.getWarehouseId());
+        ret.setRemark(dto.getRemark());
+        customerReturnMapper.updateById(ret);
+        customerReturnItemMapper.delete(new LambdaQueryWrapper<CustomerReturnItem>().eq(CustomerReturnItem::getReturnId, returnId));
+        for (CustomerReturnDTO.ItemDTO item : dto.getItems()) {
+            CustomerReturnItem returnItem = new CustomerReturnItem();
+            returnItem.setReturnId(returnId);
+            returnItem.setProductId(item.getProductId());
+            returnItem.setQty(item.getQty());
+            customerReturnItemMapper.insert(returnItem);
+        }
+    }
+
+    @Override
+    @Transactional
     public void confirmInbound(Long returnId, List<ConfirmItemDTO> items, Long operatorId) {
         CustomerReturn ret = customerReturnMapper.selectByIdForUpdate(returnId);
         if (ret == null) throw new BusinessException("退换货单不存在");

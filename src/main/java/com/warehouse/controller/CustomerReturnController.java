@@ -80,4 +80,13 @@ public class CustomerReturnController {
     public Result<List<CustomerReturnItem>> items(@PathVariable Long id) {
         return Result.success(customerReturnService.listItems(id));
     }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public Result<Void> update(@PathVariable Long id,
+                               @RequestBody @Validated CustomerReturnDTO dto,
+                               @AuthenticationPrincipal UserDetails user) {
+        customerReturnService.update(id, dto, ((JwtUserDetails) user).getUserId());
+        return Result.success();
+    }
 }
