@@ -61,6 +61,15 @@ public class DamageRecordController {
         return Result.success();
     }
 
+    @PostMapping("/{id}/write-off")
+    @PreAuthorize("isAuthenticated()")
+    public Result<Void> writeOff(@PathVariable Long id,
+                                 @AuthenticationPrincipal UserDetails user) {
+        String username = ((JwtUserDetails) user).getUsername();
+        damageRecordService.writeOff(id, username);
+        return Result.success();
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
     public Result<Void> delete(@PathVariable Long id) {
