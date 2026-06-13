@@ -14,4 +14,5 @@ public interface OutOrderService {
     void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId);
     List<OutOrderItem> getItems(Long orderId);
     void delete(Long orderId, Long operatorId);
+    void update(Long id, OutOrderDTO dto, Long operatorId);
 }

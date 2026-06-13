@@ -158,6 +158,50 @@ public class OutOrderServiceImpl implements OutOrderService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void update(Long id, OutOrderDTO dto, Long operatorId) {
+        OutOrder order = outOrderMapper.selectByIdForUpdate(id);
+        if (order == null) throw new BusinessException("出库单不存在");
+        if (!"DRAFT".equals(order.getStatus())) throw new BusinessException("只有草稿出库单可以编辑");
+        if (!"SALE".equals(order.getType()) && !"TRANSFER".equals(order.getType()))
+            throw new BusinessException("该出库单由系统生成，不能编辑");
+        if (!"SALE".equals(dto.getType()) && !"TRANSFER".equals(dto.getType()))
+            throw new BusinessException("出库类型只能是销售或调拨");
+
+        if ("SALE".equals(dto.getType())) {
+            if (dto.getSaleChannel() == null || dto.getSaleChannel().trim().isEmpty())
+                throw new BusinessException("销售出库必须选择销售渠道（零售/批发）");
+            if (!"RETAIL".equals(dto.getSaleChannel()) && !"WHOLESALE".equals(dto.getSaleChannel()))
+                throw new BusinessException("销售渠道值无效，只允许 RETAIL 或 WHOLESALE");
+        }
+        if ("TRANSFER".equals(dto.getType()) && dto.getTargetWarehouseId() == null)
+            throw new BusinessException("调拨出库必须选择目标仓库");
+        if (dto.getItems() == null || dto.getItems().isEmpty())
+            throw new BusinessException("出库明细不能为空");
+
+        order.setWarehouseId(dto.getWarehouseId());
+        order.setType(dto.getType());
+        order.setRemark(dto.getRemark());
+        order.setTargetWarehouseId("TRANSFER".equals(dto.getType()) ? dto.getTargetWarehouseId() : null);
+        order.setCustomerId(dto.getCustomerId());
+        order.setSaleChannel("SALE".equals(dto.getType()) ? dto.getSaleChannel() : null);
+        outOrderMapper.updateById(order);
+
+        // 草稿明细无下游引用，删旧重插（镜像 create 的明细逻辑，重新取成本价）
+        outOrderItemMapper.delete(new LambdaQueryWrapper<OutOrderItem>().eq(OutOrderItem::getOrderId, id));
+        for (OutOrderDTO.Item i : dto.getItems()) {
+            OutOrderItem item = new OutOrderItem();
+            item.setOrderId(id);
+            item.setProductId(i.getProductId());
+            item.setQty(i.getQty() != null ? i.getQty() : 0);
+            item.setPrice(i.getPrice());
+            com.warehouse.entity.Product prod = productMapper.selectById(i.getProductId());
+            item.setCostPrice(prod != null && prod.getCostPrice() != null ? prod.getCostPrice() : BigDecimal.ZERO);
+            outOrderItemMapper.insert(item);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void confirm(Long orderId, List<ConfirmItemDTO> actualItems, Long operatorId) {
         LocalDateTime confirmTime = LocalDateTime.now();
         int confirmed = outOrderMapper.markConfirmedFromDraft(orderId, confirmTime);
