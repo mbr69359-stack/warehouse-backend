@@ -182,6 +182,28 @@ public class DamageRecordServiceImpl implements DamageRecordService {
         damageRecordMapper.updateById(record);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void writeOff(Long id, String operator) {
+        // 行锁加载，防并发与重复核销
+        DamageRecord record = damageRecordMapper.selectByIdForUpdate(id);
+        if (record == null) throw new BusinessException("破损记录不存在");
+        if (!"PENDING".equals(record.getStatus())) throw new BusinessException("该破损记录已处理");
+        if (record.getOutOrderId() != null)
+            throw new BusinessException("该记录已被损坏出库单占用，请先在出库管理处理");
+
+        Product product = productMapper.selectById(record.getProductId());
+        BigDecimal costPrice = product != null && product.getCostPrice() != null
+                ? product.getCostPrice() : BigDecimal.ZERO;
+
+        // 整批报废：库存已在 create() 扣减，这里只核销，不动快照/流水
+        record.setStatus("RESOLVED");
+        record.setCostDeduction(BigDecimal.valueOf(record.getQty()).multiply(costPrice));
+        record.setGoodQty(0);
+        record.setResolvedAt(LocalDateTime.now());
+        damageRecordMapper.updateById(record);
+    }
+
     private InventoryLedger buildLedger(Long productId, Long locationId, BigDecimal changeQty,
                                         String type, String docNo, String operator, LocalDateTime now) {
         InventoryLedger l = new InventoryLedger();

@@ -14,4 +14,5 @@ public interface DamageRecordService {
     List<DamageRecord> listPendingAvailable(Long warehouseId);
     void delete(Long id);
     void transfer(Long damageRecordId, DamageTransferDTO dto, String operator);
+    void writeOff(Long id, String operator);
 }

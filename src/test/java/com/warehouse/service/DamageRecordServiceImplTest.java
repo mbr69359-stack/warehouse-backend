@@ -116,4 +116,54 @@ class DamageRecordServiceImplTest {
 
         verify(snapshotMapper, never()).upsert(anyLong(), anyLong(), any(BigDecimal.class), anyInt());
     }
+
+    private DamageRecord record(Long id, String status, Long productId, Integer qty, Long outOrderId) {
+        DamageRecord r = new DamageRecord();
+        r.setId(id);
+        r.setStatus(status);
+        r.setProductId(productId);
+        r.setQty(qty);
+        r.setOutOrderId(outOrderId);
+        return r;
+    }
+
+    @Test
+    void writeOff_resolvesRecordWithoutTouchingStock() {
+        when(damageRecordMapper.selectByIdForUpdate(10L))
+                .thenReturn(record(10L, "PENDING", 2L, 48, null));
+        when(productMapper.selectById(2L)).thenReturn(product(2L, 24, "3.00"));
+
+        service.writeOff(10L, "alice");
+
+        ArgumentCaptor<DamageRecord> captor = ArgumentCaptor.forClass(DamageRecord.class);
+        verify(damageRecordMapper).updateById(captor.capture());
+        DamageRecord saved = captor.getValue();
+        assertThat(saved.getStatus()).isEqualTo("RESOLVED");
+        assertThat(saved.getCostDeduction()).isEqualByComparingTo("144.00");
+        assertThat(saved.getGoodQty()).isEqualTo(0);
+        assertThat(saved.getResolvedAt()).isNotNull();
+
+        verify(snapshotMapper, never()).upsert(anyLong(), anyLong(), any(BigDecimal.class), anyInt());
+        verify(ledgerMapper, never()).insert(any(InventoryLedger.class));
+    }
+
+    @Test
+    void writeOff_alreadyResolved_throws() {
+        when(damageRecordMapper.selectByIdForUpdate(10L))
+                .thenReturn(record(10L, "RESOLVED", 2L, 48, null));
+
+        assertThatThrownBy(() -> service.writeOff(10L, "alice"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("已处理");
+    }
+
+    @Test
+    void writeOff_boundToOutOrder_throws() {
+        when(damageRecordMapper.selectByIdForUpdate(10L))
+                .thenReturn(record(10L, "PENDING", 2L, 48, 5L));
+
+        assertThatThrownBy(() -> service.writeOff(10L, "alice"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("损坏出库单");
+    }
 }
