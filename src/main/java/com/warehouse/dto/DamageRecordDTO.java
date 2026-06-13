@@ -14,4 +14,6 @@ public class DamageRecordDTO {
     @Min(value = 1, message = "数量必须大于0")
     private Integer qty;
     private String remark;
+    /** 登记单位：PIECE（默认）或 BOX；BOX 仅 BOX 仓可用，按每箱数换算成个 */
+    private String unit;
 }

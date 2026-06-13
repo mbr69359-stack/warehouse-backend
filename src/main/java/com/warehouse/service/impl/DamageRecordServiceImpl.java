@@ -38,26 +38,33 @@ public class DamageRecordServiceImpl implements DamageRecordService {
         if (dto.getQty() == null || dto.getQty() < 1)
             throw new BusinessException("破损数量必须大于0");
 
+        boolean boxUnit = "BOX".equalsIgnoreCase(dto.getUnit());
+
         // BOX 仓登记破损前必须先设置每箱数量（与 transfer() 校验口径一致），PIECE 仓不要求
         String warehouseType = warehouseMapper.selectTypeById(dto.getWarehouseId());
+        int pieceQty = dto.getQty();
         if ("BOX".equals(warehouseType)) {
             Product product = productMapper.selectById(dto.getProductId());
             if (product == null) throw new BusinessException("商品不存在");
             if (product.getQtyPerBox() == null || product.getQtyPerBox() <= 0)
                 throw new BusinessException("请先在商品管理中设置每箱数量");
+            // 按箱登记：换算成个数入库；按个登记保持原值
+            if (boxUnit) pieceQty = dto.getQty() * product.getQtyPerBox();
+        } else if (boxUnit) {
+            throw new BusinessException("按个仓库不支持按箱登记损坏");
         }
 
         // Bug #4 fix: 登记损坏时立即扣减库存，防止已损坏货物再次被销售
         StockSnapshot snap = snapshotMapper.selectOneForUpdate(dto.getProductId(), dto.getWarehouseId());
         BigDecimal currentQty = snap != null ? snap.getCurrentQty() : BigDecimal.ZERO;
-        BigDecimal deductQty  = BigDecimal.valueOf(dto.getQty());
+        BigDecimal deductQty  = BigDecimal.valueOf(pieceQty);
         if (currentQty.compareTo(deductQty) < 0)
-            throw new BusinessException("库存不足，当前库存 " + currentQty.toPlainString() + "，登记损坏数量 " + dto.getQty());
+            throw new BusinessException("库存不足，当前库存 " + currentQty.toPlainString() + "，登记损坏数量 " + pieceQty);
 
         DamageRecord record = new DamageRecord();
         record.setWarehouseId(dto.getWarehouseId());
         record.setProductId(dto.getProductId());
-        record.setQty(dto.getQty());
+        record.setQty(pieceQty);
         record.setStatus("PENDING");
         record.setRemark(dto.getRemark());
         record.setCreatedAt(LocalDateTime.now());
