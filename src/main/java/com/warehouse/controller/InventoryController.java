@@ -47,6 +47,13 @@ public class InventoryController {
         return Result.success(PageResult.of(inventoryService.page(current, size, warehouseId, productId, after)));
     }
 
+    /** 库存报表导出（EasyExcel .xlsx）；鉴权级别与 GET /inventory 一致——普通登录用户可用，不加 @PreAuthorize */
+    @GetMapping("/export")
+    public void export(@RequestParam(required = false) Long warehouseId,
+                       HttpServletResponse response) throws IOException {
+        inventoryService.exportInventory(warehouseId, response);
+    }
+
     @GetMapping("/alerts")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<List<Inventory>> alerts() {

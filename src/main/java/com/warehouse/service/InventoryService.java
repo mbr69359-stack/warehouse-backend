@@ -7,6 +7,8 @@ import com.warehouse.vo.InventoryChartItemVO;
 import com.warehouse.vo.InventoryStatsVO;
 import com.warehouse.vo.ImportResultVO;
 import org.springframework.web.multipart.MultipartFile;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -23,4 +25,6 @@ public interface InventoryService {
     List<Map<String, Object>> auditLedgerSnapshot();
     /** 从流水重建快照并同步预警值 */
     void rebuildSnapshotFromLedger();
+    /** 库存报表导出（EasyExcel），可选按仓库过滤；qtyText/statusText 在 Java 内计算 */
+    void exportInventory(Long warehouseId, HttpServletResponse response) throws IOException;
 }

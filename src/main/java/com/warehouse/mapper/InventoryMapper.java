@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.entity.Inventory;
 import com.warehouse.vo.InventoryChartItemVO;
+import com.warehouse.vo.InventoryExportRow;
 import com.warehouse.vo.InventoryStatsVO;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
@@ -103,4 +104,19 @@ public interface InventoryMapper extends BaseMapper<Inventory> {
             "WHERE ss.location_id = #{warehouseId} " +
             "ORDER BY ss.current_qty DESC")
     List<InventoryChartItemVO> selectChartByWarehouseFromSnapshot(@Param("warehouseId") Long warehouseId);
+
+    /** 库存报表导出：从快照表读全量库存（可选按仓库过滤），qtyText/statusText 在 Java 内计算 */
+    @Select("<script>" +
+            "SELECT w.name AS warehouseName, p.name AS productName, p.sku_code AS skuCode, " +
+            "       ss.current_qty AS qtyPiece, ss.alert_qty AS alertQty, " +
+            "       w.type AS warehouseType, p.qty_per_box AS qtyPerBox " +
+            "FROM stock_snapshot ss " +
+            "JOIN warehouse w ON ss.location_id = w.id AND w.deleted = 0 " +
+            "JOIN product p ON ss.product_id = p.id AND p.deleted = 0 " +
+            "<where>" +
+            "<if test='warehouseId != null'>ss.location_id = #{warehouseId}</if>" +
+            "</where>" +
+            "ORDER BY w.name, p.name" +
+            "</script>")
+    List<InventoryExportRow> selectForExport(@Param("warehouseId") Long warehouseId);
 }

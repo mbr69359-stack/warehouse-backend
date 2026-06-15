@@ -20,13 +20,18 @@ import com.warehouse.mapper.StockSnapshotMapper;
 import com.warehouse.common.BusinessException;
 import com.warehouse.service.InventoryService;
 import com.warehouse.vo.InventoryChartItemVO;
+import com.warehouse.vo.InventoryExportRow;
 import com.warehouse.vo.InventoryStatsVO;
 import com.warehouse.vo.ImportResultVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -160,6 +165,33 @@ public class InventoryServiceImpl implements InventoryService {
         // 从流水重建快照（rebuild 本身按流水求和覆盖快照，账实天然一致），再同步预警值
         stockSnapshotMapper.rebuildAllFromLedger();
         stockSnapshotMapper.syncAlertQtyFromInventory();
+    }
+
+    @Override
+    public void exportInventory(Long warehouseId, HttpServletResponse response) throws IOException {
+        List<InventoryExportRow> rows = inventoryMapper.selectForExport(warehouseId);
+        // 在 Java 内计算 qtyText（箱/个换算）和 statusText，换算逻辑与前端 List.vue 的 formatQty('box') 完全一致
+        rows.forEach(r -> {
+            int qty = r.getQtyPiece() != null ? r.getQtyPiece() : 0;
+            Integer qtyPerBox = r.getQtyPerBox();
+            if ("PIECE".equals(r.getWarehouseType()) || qtyPerBox == null || qtyPerBox == 0) {
+                r.setQtyText(qty + "个");
+            } else {
+                int boxes = qty / qtyPerBox;
+                int loose = qty % qtyPerBox;
+                r.setQtyText(loose > 0 ? boxes + "箱" + loose + "个" : boxes + "箱");
+            }
+            int alert = r.getAlertQty() != null ? r.getAlertQty() : 0;
+            r.setStatusText(alert > 0 && qty < alert ? "库存不足" : "正常");
+        });
+
+        String fileName = URLEncoder.encode("库存报表_" + LocalDate.now(), "UTF-8").replace("+", "%20");
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("utf-8");
+        response.setHeader("Content-Disposition", "attachment;filename*=UTF-8''" + fileName + ".xlsx");
+        EasyExcel.write(response.getOutputStream(), InventoryExportRow.class)
+                .sheet("库存报表")
+                .doWrite(rows);
     }
 
     @Override
