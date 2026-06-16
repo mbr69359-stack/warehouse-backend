@@ -97,18 +97,24 @@ public interface OutOrderMapper extends BaseMapper<OutOrder> {
 
     @Select("<script>" +
             "SELECT c.id AS customerId, c.name AS customerName, c.contact, c.phone, " +
-            "       COUNT(DISTINCT oo.id) AS orderCount, " +
-            "       COALESCE(SUM(COALESCE(oi.actual_qty, oi.qty)), 0) AS totalQty, " +
+            "       p.id AS productId, p.name AS productName, p.sku_code AS skuCode, " +
+            "       p.qty_per_box AS qtyPerBox, " +
+            // totalQty 统一换算为「个」：箱仓销售数量 × 每箱数（损坏/补发出库本就按个），其余按个
+            "       COALESCE(SUM(CASE WHEN w.type = 'BOX' AND oo.type NOT IN ('DAMAGE_OUT','REPLACEMENT_OUT') " +
+            "         THEN COALESCE(oi.actual_qty, oi.qty) * COALESCE(p.qty_per_box, 1) " +
+            "         ELSE COALESCE(oi.actual_qty, oi.qty) END), 0) AS totalQty, " +
             "       COALESCE(SUM(COALESCE(oi.actual_qty, oi.qty) * oi.price), 0) AS totalAmount " +
             "FROM customer c " +
             "JOIN out_order oo ON oo.customer_id = c.id " +
             "    AND oo.status = 'CONFIRMED' AND oo.deleted = 0 " +
             "    AND oo.confirm_time BETWEEN #{startDate} AND #{endDate} " +
-            "LEFT JOIN out_order_item oi ON oi.order_id = oo.id " +
+            "JOIN out_order_item oi ON oi.order_id = oo.id " +
+            "JOIN product p ON p.id = oi.product_id " +
+            "LEFT JOIN warehouse w ON w.id = oo.warehouse_id " +
             "WHERE c.deleted = 0 " +
             "<if test='customerId != null'>AND c.id = #{customerId} </if>" +
-            "GROUP BY c.id, c.name, c.contact, c.phone " +
-            "ORDER BY totalAmount DESC" +
+            "GROUP BY c.id, c.name, c.contact, c.phone, p.id, p.name, p.sku_code, p.qty_per_box " +
+            "ORDER BY c.name, totalAmount DESC" +
             "</script>")
     List<Map<String, Object>> selectCustomerStatement(
             @Param("startDate") String startDate,

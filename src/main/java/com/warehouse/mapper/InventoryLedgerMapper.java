@@ -23,6 +23,7 @@ public interface InventoryLedgerMapper extends BaseMapper<InventoryLedger> {
             "       COALESCE(w.name, '全局') AS warehouseName, " +
             "       p.name AS productName, p.sku_code AS skuCode, p.unit, il.type AS typeName, " +
             "       il.change_qty AS changeQty, " +
+            "       il.qty_unit AS qtyUnit, p.qty_per_box AS qtyPerBox, w.type AS warehouseType, " +
             "       SUM(il.change_qty) OVER (" +
             "           PARTITION BY il.product_id, il.location_id " +
             "           ORDER BY il.occurred_at, il.created_at " +

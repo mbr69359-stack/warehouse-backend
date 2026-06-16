@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -91,8 +92,20 @@ public class InventoryLedgerServiceImpl implements InventoryLedgerService {
     public void exportLedger(Long productId, Long locationId, String type,
                              String startDate, String endDate, HttpServletResponse response) throws IOException {
         List<LedgerExportRow> rows = ledgerMapper.selectForExport(productId, locationId, type, startDate, endDate);
-        // 将原始类型代码转为中文
-        rows.forEach(r -> r.setTypeName(TYPE_NAME_MAP.getOrDefault(r.getTypeName(), r.getTypeName())));
+        // 将原始类型代码转为中文，并按记账单位换算出「个」数值列与「箱/个」文本列
+        // （换算口径与前端流水报表 formatChangeQty / 库存报表导出完全一致）
+        rows.forEach(r -> {
+            r.setTypeName(TYPE_NAME_MAP.getOrDefault(r.getTypeName(), r.getTypeName()));
+            BigDecimal raw = r.getChangeQty() != null ? r.getChangeQty() : BigDecimal.ZERO;
+            Integer qpb = r.getQtyPerBox();
+            boolean boxUnit = "BOX".equals(r.getQtyUnit());
+            // 「个」列：按箱记账则 ×每箱数还原为个，否则本就是个
+            BigDecimal pieces = (boxUnit && qpb != null && qpb > 0)
+                    ? raw.multiply(BigDecimal.valueOf(qpb))
+                    : raw;
+            r.setChangeQtyPiece(pieces);
+            r.setChangeQtyText(boxText(raw, r.getQtyUnit(), r.getWarehouseType(), qpb));
+        });
 
         String fileName = URLEncoder.encode("库存台账_" + LocalDate.now(), "UTF-8").replace("+", "%20");
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -101,5 +114,25 @@ public class InventoryLedgerServiceImpl implements InventoryLedgerService {
         EasyExcel.write(response.getOutputStream(), LedgerExportRow.class)
                 .sheet("库存台账")
                 .doWrite(rows);
+    }
+
+    /**
+     * 变动数量「箱/个」文本。qtyBd 为按记账单位的原始值（按箱记账则为箱数，否则为个数）。
+     * 口径与前端流水报表 formatChangeQty（按箱模式）一致：
+     *   - 个仓 / 缺每箱数 → 直接按个；
+     *   - 按箱记账 → 直接按箱；
+     *   - 按个记账的箱仓 → 个数换算成「N箱零M个」。
+     */
+    private static String boxText(BigDecimal qtyBd, String qtyUnit, String whType, Integer qtyPerBox) {
+        long qty = qtyBd != null ? qtyBd.longValue() : 0L;
+        String prefix = qty < 0 ? "-" : "+";
+        long abs = Math.abs(qty);
+        if ("PIECE".equals(whType)) return prefix + abs + "个";
+        if ("BOX".equals(qtyUnit))  return prefix + abs + "箱";
+        if (qtyPerBox == null || qtyPerBox == 0) return prefix + abs + "个";
+        long boxes = abs / qtyPerBox;
+        long loose = abs % qtyPerBox;
+        if (boxes == 0) return prefix + loose + "个";
+        return loose > 0 ? prefix + boxes + "箱零" + loose + "个" : prefix + boxes + "箱";
     }
 }

@@ -91,18 +91,24 @@ public interface InOrderMapper extends BaseMapper<InOrder> {
 
     @Select("<script>" +
             "SELECT s.id AS supplierId, s.name AS supplierName, s.contact, s.phone, " +
-            "       COUNT(DISTINCT io.id) AS orderCount, " +
-            "       COALESCE(SUM(COALESCE(ii.actual_qty, ii.plan_qty)), 0) AS totalQty, " +
+            "       p.id AS productId, p.name AS productName, p.sku_code AS skuCode, " +
+            "       p.qty_per_box AS qtyPerBox, " +
+            // totalQty 统一换算为「个」：箱仓数量 × 每箱数，其余按个
+            "       COALESCE(SUM(CASE WHEN w.type = 'BOX' " +
+            "         THEN COALESCE(ii.actual_qty, ii.plan_qty) * COALESCE(p.qty_per_box, 1) " +
+            "         ELSE COALESCE(ii.actual_qty, ii.plan_qty) END), 0) AS totalQty, " +
             "       COALESCE(SUM(COALESCE(ii.actual_qty, ii.plan_qty) * ii.price), 0) AS totalAmount " +
             "FROM supplier s " +
             "JOIN in_order io ON io.supplier_id = s.id " +
             "    AND io.status = 'CONFIRMED' AND io.deleted = 0 " +
             "    AND io.confirm_time BETWEEN #{startDate} AND #{endDate} " +
-            "LEFT JOIN in_order_item ii ON ii.order_id = io.id " +
+            "JOIN in_order_item ii ON ii.order_id = io.id " +
+            "JOIN product p ON p.id = ii.product_id " +
+            "LEFT JOIN warehouse w ON w.id = io.warehouse_id " +
             "WHERE s.deleted = 0 " +
             "<if test='supplierId != null'>AND s.id = #{supplierId} </if>" +
-            "GROUP BY s.id, s.name, s.contact, s.phone " +
-            "ORDER BY totalAmount DESC" +
+            "GROUP BY s.id, s.name, s.contact, s.phone, p.id, p.name, p.sku_code, p.qty_per_box " +
+            "ORDER BY s.name, totalAmount DESC" +
             "</script>")
     List<Map<String, Object>> selectSupplierStatement(
             @Param("startDate") String startDate,
