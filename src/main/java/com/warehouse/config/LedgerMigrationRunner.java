@@ -27,6 +27,7 @@ public class LedgerMigrationRunner implements CommandLineRunner {
         ensureTables();
         ensureProductUuid();
         ensureProductSpecBarcode();
+        ensureSkuDeletedAwareUnique();
         ensureDamageTables();
         ensureOutOrderExchangeNo();
         ensureReturnInboundColumns();
@@ -193,6 +194,33 @@ public class LedgerMigrationRunner implements CommandLineRunner {
     private void ensureProductSpecBarcode() {
         addColumnIfMissing("product", "spec", "ALTER TABLE product ADD COLUMN spec VARCHAR(500) NULL");
         addColumnIfMissing("product", "barcode", "ALTER TABLE product ADD COLUMN barcode VARCHAR(100) NULL");
+    }
+
+    /**
+     * 让 sku_code 的唯一约束"只对活动商品生效"，避免软删商品（deleted=1）继续占用 SKU
+     * 导致复用旧 SKU 新增时报 Duplicate entry。
+     * 派生列 sku_active：活动行=sku_code，软删行=NULL（MySQL 不对 NULL 做唯一校验）。
+     * 幂等：列/索引已存在则跳过；旧全局唯一索引仅在仍存在时删除。
+     */
+    private void ensureSkuDeletedAwareUnique() {
+        addColumnIfMissing("product", "sku_active",
+            "ALTER TABLE product ADD COLUMN sku_active VARCHAR(100) " +
+            "GENERATED ALWAYS AS (IF(deleted = 0, sku_code, NULL)) STORED");
+        createIndexIfMissing("product", "uq_sku_active",
+            "ALTER TABLE product ADD UNIQUE KEY uq_sku_active (sku_active)");
+        // 删除旧的"全局"单列唯一索引（列级 UNIQUE 默认索引名为 sku_code），它会让软删行也占用 SKU。
+        // 排除新建的 uq_sku_active（建在 sku_active 列上）与 uq_product_uuid。
+        List<String> staleIndexes = jdbc.queryForList(
+            "SELECT INDEX_NAME FROM information_schema.STATISTICS " +
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product' " +
+            "  AND NON_UNIQUE = 0 AND INDEX_NAME NOT IN ('PRIMARY', 'uq_sku_active', 'uq_product_uuid') " +
+            "GROUP BY INDEX_NAME " +
+            "HAVING COUNT(*) = 1 AND MAX(COLUMN_NAME = 'sku_code') = 1",
+            String.class);
+        for (String index : staleIndexes) {
+            jdbc.execute("ALTER TABLE product DROP INDEX `" + index.replace("`", "``") + "`");
+            log.info("[LedgerMigration] 已删除 product 旧全局唯一索引 {}（改由 uq_sku_active 仅约束活动商品）", index);
+        }
     }
 
     private void ensureDamageTables() {

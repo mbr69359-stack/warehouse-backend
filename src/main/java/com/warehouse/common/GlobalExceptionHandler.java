@@ -2,6 +2,7 @@ package com.warehouse.common;
 
 import javax.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -52,14 +53,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(ex.getCode()).body(Result.fail(ex.getCode(), ex.getMessage()));
     }
 
+    @ExceptionHandler(DuplicateKeyException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleDuplicateKey(DuplicateKeyException ex) {
+        log.warn("DuplicateKeyException: {}", ex.getMessage());
+        String raw = ex.getMessage() == null ? "" : ex.getMessage();
+        String msg = raw.contains("sku") ? "SKU编码已存在，请更换后重试"
+                : raw.contains("uuid") ? "商品UUID冲突，请重试"
+                : "数据重复，无法保存";
+        return Result.fail(ResultCode.BAD_REQUEST.getCode(), msg);
+    }
+
     @ExceptionHandler(RuntimeException.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<Void> handleRuntime(RuntimeException ex) {
         log.error("RuntimeException: {}", ex.getMessage(), ex);
-        // DEBUG: 临时暴露异常详情，排查后删除
-        String detail = ex.getClass().getSimpleName() + ": " + ex.getMessage();
-        if (ex.getCause() != null) detail += " | cause: " + ex.getCause().getMessage();
-        return Result.fail(500, detail);
+        return Result.fail(ResultCode.INTERNAL_ERROR);
     }
 
     @ExceptionHandler(Exception.class)

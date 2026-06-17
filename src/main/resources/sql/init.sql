@@ -70,7 +70,9 @@ CREATE TABLE IF NOT EXISTS product (
     id          BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     uuid        CHAR(36) NOT NULL DEFAULT '',
     name        VARCHAR(200) NOT NULL,
-    sku_code    VARCHAR(100) NOT NULL UNIQUE,
+    sku_code    VARCHAR(100) NOT NULL,
+    -- 活动商品=sku_code，软删商品=NULL；唯一约束仅对活动商品生效，软删行不再占用 SKU
+    sku_active  VARCHAR(100) GENERATED ALWAYS AS (IF(deleted = 0, sku_code, NULL)) STORED,
     category_id BIGINT,
     unit        VARCHAR(20)  NOT NULL DEFAULT '个',
     price       DECIMAL(12,2) NOT NULL DEFAULT 0.00,
@@ -83,7 +85,8 @@ CREATE TABLE IF NOT EXISTS product (
     deleted     SMALLINT NOT NULL DEFAULT 0,
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_product_uuid (uuid)
+    UNIQUE KEY uq_product_uuid (uuid),
+    UNIQUE KEY uq_sku_active (sku_active)
 );
 
 CREATE TABLE IF NOT EXISTS supplier (
