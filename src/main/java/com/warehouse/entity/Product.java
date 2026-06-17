@@ -25,6 +25,9 @@ public class Product {
     private BigDecimal weightPerBox;
     private Integer qtyPerBox;
     private Integer status;
+    // 所属分类名称（非持久字段，列表/下拉用于区分同名商品）
+    @TableField(exist = false)
+    private String categoryName;
     @TableLogic
     private Integer deleted;
     @TableField(fill = FieldFill.INSERT)

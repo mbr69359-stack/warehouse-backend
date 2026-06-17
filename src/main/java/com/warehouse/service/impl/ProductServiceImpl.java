@@ -4,9 +4,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.dto.ProductDTO;
+import com.warehouse.entity.Category;
 import com.warehouse.entity.InventoryLedger;
 import com.warehouse.entity.Product;
 import com.warehouse.entity.StockSnapshot;
+import com.warehouse.mapper.CategoryMapper;
 import com.warehouse.mapper.InventoryLedgerMapper;
 import com.warehouse.mapper.ProductMapper;
 import com.warehouse.mapper.StockSnapshotMapper;
@@ -19,7 +21,11 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +34,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductMapper productMapper;
     private final StockSnapshotMapper stockSnapshotMapper;
     private final InventoryLedgerMapper ledgerMapper;
+    private final CategoryMapper categoryMapper;
 
     @Override
     public Page<Product> page(int current, int size, String name, Long categoryId) {
@@ -35,7 +42,22 @@ public class ProductServiceImpl implements ProductService {
                 .like(StringUtils.hasText(name), Product::getName, name)
                 .eq(categoryId != null, Product::getCategoryId, categoryId)
                 .orderByDesc(Product::getCreateTime);
-        return productMapper.selectPage(new Page<>(current, size), q);
+        Page<Product> page = productMapper.selectPage(new Page<>(current, size), q);
+        fillCategoryNames(page.getRecords());
+        return page;
+    }
+
+    // 批量填充分类名（同名商品靠分类区分），一次查询避免 N+1
+    private void fillCategoryNames(List<Product> products) {
+        if (products == null || products.isEmpty()) return;
+        Set<Long> catIds = products.stream()
+                .map(Product::getCategoryId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (catIds.isEmpty()) return;
+        Map<Long, String> nameMap = categoryMapper.selectBatchIds(catIds).stream()
+                .collect(Collectors.toMap(Category::getId, Category::getName));
+        products.forEach(p -> p.setCategoryName(nameMap.get(p.getCategoryId())));
     }
 
     @Override
