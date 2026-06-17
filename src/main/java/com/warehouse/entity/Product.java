@@ -11,6 +11,7 @@ public class Product {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String name;
+    @TableField(fill = FieldFill.INSERT)
     private String uuid;
     private String skuCode;
     private Long categoryId;

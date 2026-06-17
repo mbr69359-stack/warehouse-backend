@@ -8,6 +8,7 @@ import org.apache.ibatis.reflection.MetaObject;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Configuration
 public class MybatisPlusConfig implements MetaObjectHandler {
@@ -24,6 +25,13 @@ public class MybatisPlusConfig implements MetaObjectHandler {
     public void insertFill(MetaObject metaObject) {
         this.strictInsertFill(metaObject, "createTime", LocalDateTime.class, LocalDateTime.now());
         this.strictInsertFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
+        // 仅当实体含 uuid 字段且当前为空时填充，避免新增商品因唯一索引 uq_product_uuid 撞空串
+        if (metaObject.hasGetter("uuid")) {
+            Object current = this.getFieldValByName("uuid", metaObject);
+            if (current == null || current.toString().isEmpty()) {
+                this.setFieldValByName("uuid", UUID.randomUUID().toString(), metaObject);
+            }
+        }
     }
 
     @Override
