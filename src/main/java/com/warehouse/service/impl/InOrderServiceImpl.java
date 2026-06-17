@@ -235,8 +235,9 @@ public class InOrderServiceImpl implements InOrderService {
 
     @Override
     public List<InOrderItem> getItems(Long orderId) {
-        return inOrderItemMapper.selectList(
-                new LambdaQueryWrapper<InOrderItem>().eq(InOrderItem::getOrderId, orderId));
+        // 必须用联表查询，带出商品名/SKU/每箱重量/每箱个数，
+        // 否则详情页与打印单据的商品名、重量列拿不到数据。
+        return inOrderItemMapper.selectItemsWithProduct(orderId);
     }
 
     @Override
